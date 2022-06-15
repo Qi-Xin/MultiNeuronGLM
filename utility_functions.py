@@ -5,10 +5,9 @@ from scipy import signal
 
 ##### Yu Chen
 from absl import logging
-import h5py
 import networkx as nx
 import pickle
-import seaborn
+import seaborn as sns
 import scipy.interpolate
 import copy
 
@@ -692,7 +691,7 @@ def get_power_phase(data, npadding, lowcut, highcut):
 
     for itrial in range(ntrial):
         raw_signal = data[:,:,itrial]
-        instantaneous_phase, instantaneous_power = utils.get_phase(raw_signal, 500, lowcut=lowcut, highcut=highcut, 
+        instantaneous_phase, instantaneous_power = get_phase(raw_signal, 500, lowcut=lowcut, highcut=highcut, 
                                                                    npadding=npadding)
         phase[:,:,itrial] = instantaneous_phase
         power[:,:,itrial] = instantaneous_power
@@ -740,7 +739,6 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
-
 # Add correct label for each figure
 def add_label_csd(the_title,the_yticks):
     yticks_num = 5
@@ -751,9 +749,6 @@ def add_label_csd(the_title,the_yticks):
     plt.ylabel('Depth (micron)')
     plt.gca().set_title(the_title)
     plt.gca().xaxis.tick_bottom()
-
-
-
 
 def plot_im (arr , v1 , v2):
     plt.xticks([]) 
