@@ -16,6 +16,73 @@ import scipy.interpolate
 import sklearn.model_selection
 from tqdm import tqdm
 
+import numpy as np
+import numpy.matlib
+from numpy.fft import fft as fft
+from numpy.fft import ifft as ifft
+
+def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1):
+    """ Generating raised cosine basis
+
+    Args:
+        num (int, optional): Number of basis. Defaults to 10.
+        peaks_min (float, optional): Position of the first basis peak. Defaults to 0.
+        peaks_max (float, optional): Position of the last basis peak. Defaults to 100.
+        h_nonlin (float, optional): Range from 0 to 1. Determines how nonlinear these basis functions would be. Defaults to 0.2.
+        dt (int/float, optional): Length of time bin. Defaults to 1.
+
+    Returns:
+        ihbasis: nt by num matrix, each column for each basis
+    """    
+    
+    assert 0<=nonlinear<=1, "h_nonlin should be from 0 to 1"
+    nonlinear = nonlinear*peaks_max
+    nlin = lambda x: np.log(x+1e-10)
+    invnl = lambda x: np.exp(x)-1e-10
+    hpeaks = np.array([peaks_min, peaks_max])
+    yrnge = nlin(hpeaks+nonlinear)
+
+    db = np.diff(yrnge)[0]/(num-1)
+    ctrs = np.linspace(yrnge[0], yrnge[1], num)[None,:]
+    mxt = (invnl(yrnge[1]+2*db)-nonlinear).astype(int)
+    iht = np.arange(0,mxt,dt)[:,None]
+    nt = len(iht)
+    ff = lambda x, c, dc: (np.cos(np.maximum(-np.pi,np.minimum(np.pi, (x-c)*np.pi/dc/2)))+1)/2
+    ihbasis = ff(np.matlib.repmat(nlin(iht+nonlinear), 1, num), np.matlib.repmat(ctrs, nt, 1), db)
+    return ihbasis
+
+def conv(sp, kernel):
+    """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
+
+    Args:
+        sp (numpy vector): spike trains of a single trial
+        kernel (numpy vector): a basis that composes 
+
+    Returns:
+        [type]: [description]
+    """    
+    kernel = np.hstack((np.array([0]), kernel))
+    nn = len(sp) + len(kernel) - 1
+    G = ifft(fft(sp,nn)*fft(kernel,nn))
+    G = G[0:len(sp)].real
+    G[np.abs(G)<1e-13] = 0
+    return G
+
+def make_spline(start=0, end=1e3, dt=1, num=10):
+    from bspline import Bspline
+    num = num-1
+    knot_vector = np.hstack((np.array([start,start]), np.linspace(start,end,num), np.array([end,end])))
+    basis = Bspline(knot_vector,2)
+    
+    x_min = np.min(basis.knot_vector)
+    x_max = np.max(basis.knot_vector)
+    x = np.arange(x_min, x_max+dt, dt)
+    N = np.array([basis(i) for i in x])
+    N = N[0:-1, :]
+    max_scale = np.max(N,axis=0)
+    N = N/max_scale
+    return N
+
 
 class SmoothingSpline(object):
 
