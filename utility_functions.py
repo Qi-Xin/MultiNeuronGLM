@@ -12,6 +12,7 @@ import seaborn
 import scipy.interpolate
 import copy
 
+# Useful information about Allen brain areas
 """
 Total areas
 'APN', 'LP', 'MB', 'DG', 'CA1', 'VISrl', nan, 'TH', 'LGd', 'CA3', 'VIS', 'CA2',
@@ -120,6 +121,7 @@ same angle (probeA = AM, probeB = PM, probeC = V1, probeD = LM, probeE = AL,
 probeF = RL). However, the targeting is not always accurate, so the actual 
 recorded region may be different.
 """
+
 # Orange.
 MIDBRAIN = ['APN', 'MB', 'AT', 'DT', 'PPT', 'NOT', 'LT', 'OP',
             'SC', 'SCig', 'SCiw', 'SCzo', 'SCsg', 'SCop', 'MRN', 'RPF']

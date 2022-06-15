@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import sys
-# sys.path.append('D:/Github/rCSD')
 import numpy as np
 import pandas as pd
 import os
