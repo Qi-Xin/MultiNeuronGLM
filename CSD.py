@@ -14,7 +14,6 @@ from forward_models import b_fwd_1d, fwd_model_1d
 import utility_functions as utils
 from scipy.optimize import minimize
 
-
 class CSD:
     
     def __init__(self, dataset, **kwargs):
