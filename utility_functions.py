@@ -11,7 +11,8 @@ import seaborn as sns
 import scipy.interpolate
 import copy
 
-# Useful information about Allen brain areas
+##### Useful information about Allen brain areas
+
 """
 Total areas
 'APN', 'LP', 'MB', 'DG', 'CA1', 'VISrl', nan, 'TH', 'LGd', 'CA3', 'VIS', 'CA2',
@@ -120,7 +121,7 @@ same angle (probeA = AM, probeB = PM, probeC = V1, probeD = LM, probeE = AL,
 probeF = RL). However, the targeting is not always accurate, so the actual 
 recorded region may be different.
 """
-
+##### Colors for plot
 # Orange.
 MIDBRAIN = ['APN', 'MB', 'AT', 'DT', 'PPT', 'NOT', 'LT', 'OP',
             'SC', 'SCig', 'SCiw', 'SCzo', 'SCsg', 'SCop', 'MRN', 'RPF']
@@ -138,497 +139,350 @@ THALAMUS_AREA = ['TH', 'LGd', 'LGv', 'LP', 'IGL', 'PO', 'POL', 'SGN',
 VISUAL_AREA = ['VIS', 'VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl',
                'VISmmp', 'VISmma', 'VISli']
 
-
-
-def bin_spike_times(
-    spike_times,
-    bin_width,
-    len_trial):
-  """Convert spike times to spike bins, spike times list to spike bins matrix.
-
-  # spike times outside the time range will not be counted in the bin at the
-  # end. A time bin is left-closed right-open [t, t+delta).
-  # e.g. t = [0,1,2,3,4], y = [0, 0.1, 0.2, 1.1, 5, 6]
-  # output: [3, 1, 0, 0]
-
-  Args:
-    spike_times: The format can be list, np.ndarray.
-  """
-  bins = np.arange(0, len_trial+bin_width, bin_width)
-
-  if len(spike_times) == 0:
-    return np.zeros(len(bins)-1), bins[:-1]
-
-  # multiple spike_times.
-  elif isinstance(spike_times[0], list) or isinstance(spike_times[0], np.ndarray):
-    num_trials = len(spike_times)
-    num_bins = len(bins) - 1
-    spike_hist = np.zeros((num_trials, num_bins))
-    for r in range(num_trials):
-      spike_hist[r], _ = np.histogram(spike_times[r], bins)
-
-  # single spike_times.
-  else:
-    spike_hist, _ = np.histogram(spike_times, bins)
-  return spike_hist, bins[:-1]
-
-
 def color_by_brain_area(ccf_structure, colortype='normal'):
-  """Assign a color for a brain area."""
-  if ccf_structure in VISUAL_AREA:
-    color = 'tab:green'
-    if colortype == 'dark':
-      color = 'darkgreen'
-    elif colortype =='light':
-      color = 'lime'
-    elif colortype =='rgby':
-      color = [0.30196078, 0.68627451, 0.29019608, 1.]
-  elif ccf_structure in HIPPOCAMPUS_AREA:
-    color = 'tab:blue'
-    if colortype == 'dark':
-      color = 'darkblue'
-    elif colortype =='light':
-      color = 'lightblue'
-    elif colortype =='rgby':
-      color = [0.21568627, 0.49411765, 0.72156863, 1.]
-  elif ccf_structure in THALAMUS_AREA:
-    color = 'tab:red'
-    if colortype == 'dark':
-      color = 'darkred'
-    elif colortype =='light':
-      color = 'lightcoral'
-    elif colortype =='rgby':
-      color = [0.89411765, 0.10196078, 0.10980392, 1.]
-  elif ccf_structure in MIDBRAIN:
-    color = 'tab:orange'
-    if colortype == 'dark':
-      color = 'darkorange'
-    elif colortype =='light':
-      color = 'gold'
-    elif colortype =='rgby':
-      color = [1., 0.49803922, 0.,1.]
-  else:
-    color = 'tab:gray'
-    if colortype == 'dark':
-      color = 'dimgray'
-    elif colortype =='light':
-      color = 'lightgray'
-    elif colortype =='rgby':
-      color = [.5, .5, .5, 1.0]
-  return color
+    """Assign a color for a brain area."""
+    if ccf_structure in VISUAL_AREA:
+        color = 'tab:green'
+        if colortype == 'dark':
+            color = 'darkgreen'
+        elif colortype =='light':
+            color = 'lime'
+        elif colortype =='rgby':
+            color = [0.30196078, 0.68627451, 0.29019608, 1.]
+    elif ccf_structure in HIPPOCAMPUS_AREA:
+        color = 'tab:blue'
+        if colortype == 'dark':
+            color = 'darkblue'
+        elif colortype =='light':
+            color = 'lightblue'
+        elif colortype =='rgby':
+            color = [0.21568627, 0.49411765, 0.72156863, 1.]
+    elif ccf_structure in THALAMUS_AREA:
+        color = 'tab:red'
+        if colortype == 'dark':
+            color = 'darkred'
+        elif colortype =='light':
+            color = 'lightcoral'
+        elif colortype =='rgby':
+            color = [0.89411765, 0.10196078, 0.10980392, 1.]
+    elif ccf_structure in MIDBRAIN:
+        color = 'tab:orange'
+        if colortype == 'dark':
+            color = 'darkorange'
+        elif colortype =='light':
+            color = 'gold'
+        elif colortype =='rgby':
+            color = [1., 0.49803922, 0.,1.]
+    else:
+        color = 'tab:gray'
+        if colortype == 'dark':
+            color = 'dimgray'
+        elif colortype =='light':
+            color = 'lightgray'
+        elif colortype =='rgby':
+            color = [.5, .5, .5, 1.0]
+    return color
 
 
+##### Spike trains
+def bin_spike_times(
+        spike_times,
+        bin_width,
+        len_trial):
+    """Convert spike times to spike bins, spike times list to spike bins matrix.
+
+    spike times outside the time range will not be counted in the bin at the
+    end. A time bin is left-closed right-open [t, t+delta).
+    e.g. t = [0,1,2,3,4], y = [0, 0.1, 0.2, 1.1, 5, 6]
+    output: [3, 1, 0, 0]
+
+    Args:
+        spike_times: The format can be list, np.ndarray.
+    """
+    bins = np.arange(0, len_trial+bin_width, bin_width)
+
+    if len(spike_times) == 0:
+        return np.zeros(len(bins)-1), bins[:-1]
+
+    # multiple spike_times.
+    elif isinstance(spike_times[0], list) or isinstance(spike_times[0], np.ndarray):
+        num_trials = len(spike_times)
+        num_bins = len(bins) - 1
+        spike_hist = np.zeros((num_trials, num_bins))
+        for r in range(num_trials):
+            spike_hist[r], _ = np.histogram(spike_times[r], bins)
+
+    # single spike_times.
+    else:
+        spike_hist, _ = np.histogram(spike_times, bins)
+    return spike_hist, bins[:-1]
+
+
+
+##### CCG related
 def cross_corr(
-    y1,
-    y2,
-    index_range=None,
-    type='max'):
-  """Calculates the cross correlation and lags with normalization.
+        y1,
+        y2,
+        index_range=None,
+        type='max'):
+    """Calculates the cross correlation and lags with normalization.
 
-  The definition of the discrete cross correlation is in:
-  https://www.mathworks.com/help/matlab/ref/xcorr.html
-  The `y1` takes the first place, and the `y2` takes the second place. So when
-  lag is negtive, it means the `log_lmbd` is on the left of `spike_trains`.
+    The definition of the discrete cross correlation is in:
+    https://www.mathworks.com/help/matlab/ref/xcorr.html
+    The `y1` takes the first place, and the `y2` takes the second place. So when
+    lag is negtive, it means the `log_lmbd` is on the left of `spike_trains`.
 
-  Args:
-    index_range: two entries list. [min_index, max_index]. If the index_range is
-        beyond the range of the array, it will
-        automatically be clipped to the bounds.
-    type:
-        'max': single max value.
-        'full': get the whole correlation and corresponding lags.
+    Args:
+        index_range: two entries list. [min_index, max_index]. If the index_range is
+                beyond the range of the array, it will
+                automatically be clipped to the bounds.
+        type:
+                'max': single max value.
+                'full': get the whole correlation and corresponding lags.
 
-  Returns:
-    max_corr: Maximum correlation without normalization.
-    lag: The lag in terms of the index.
-  """
+    Returns:
+        max_corr: Maximum correlation without normalization.
+        lag: The lag in terms of the index.
+    """
 
-  # plt.figure()
-  # plt.plot(y1, '.')
-  # plt.plot(y2, '.')
-  # plt.show()
+    # plt.figure()
+    # plt.plot(y1, '.')
+    # plt.plot(y2, '.')
+    # plt.show()
 
-  if len(y1) != len(y2):
-    raise ValueError('The lengths of the inputs should be the same.')
+    if len(y1) != len(y2):
+        raise ValueError('The lengths of the inputs should be the same.')
 
-  y1_auto_corr = np.dot(y1, y1) / len(y1)
-  y2_auto_corr = np.dot(y2, y2) / len(y1)
-  corr = signal.correlate(y1, y2, mode='same')
-  # The unbiased sample size is N - lag.
-  unbiased_sample_size = signal.correlate(
-      np.ones(len(y1)), np.ones(len(y1)), mode='same')
-  if y1_auto_corr != 0 and y2_auto_corr != 0:
-    corr = corr / unbiased_sample_size / np.sqrt(y1_auto_corr * y2_auto_corr)
-  shift = len(y1) // 2
+    y1_auto_corr = np.dot(y1, y1) / len(y1)
+    y2_auto_corr = np.dot(y2, y2) / len(y1)
+    corr = signal.correlate(y1, y2, mode='same')
+    # The unbiased sample size is N - lag.
+    unbiased_sample_size = signal.correlate(
+            np.ones(len(y1)), np.ones(len(y1)), mode='same')
+    if y1_auto_corr != 0 and y2_auto_corr != 0:
+        corr = corr / unbiased_sample_size / np.sqrt(y1_auto_corr * y2_auto_corr)
+    shift = len(y1) // 2
 
-  if index_range is None and type == 'max':
-    max_corr = np.max(corr)
-    argmax_corr = np.argmax(corr)
-    return max_corr, argmax_corr - shift
-  elif index_range is None and type == 'full':
-    return corr, np.arange(len(corr)) - shift
+    if index_range is None and type == 'max':
+        max_corr = np.max(corr)
+        argmax_corr = np.argmax(corr)
+        return max_corr, argmax_corr - shift
+    elif index_range is None and type == 'full':
+        return corr, np.arange(len(corr)) - shift
 
-  index_range = np.array(index_range).astype(int)
-  shifted_index_range = index_range + shift
-  if index_range[0] + shift < 0:
-    index_range[0] -= index_range[0] + shift
-    shifted_index_range[0] = 0
-  if index_range[1] + shift >= len(y1):
-    index_range[1] -= index_range[1] + shift - len(y1) + 1
-    shifted_index_range[1] = len(y1) - 1
+    index_range = np.array(index_range).astype(int)
+    shifted_index_range = index_range + shift
+    if index_range[0] + shift < 0:
+        index_range[0] -= index_range[0] + shift
+        shifted_index_range[0] = 0
+    if index_range[1] + shift >= len(y1):
+        index_range[1] -= index_range[1] + shift - len(y1) + 1
+        shifted_index_range[1] = len(y1) - 1
 
-  index_range_mask = np.array(
-      range(index_range[0], index_range[1] + 1))
-  shifted_index_range_mask = np.array(
-      range(shifted_index_range[0], shifted_index_range[1] + 1))
+    index_range_mask = np.array(
+            range(index_range[0], index_range[1] + 1))
+    shifted_index_range_mask = np.array(
+            range(shifted_index_range[0], shifted_index_range[1] + 1))
 
-  if type == 'max':
-    max_corr = np.max(corr[shifted_index_range_mask])
-    argmax_corr = np.argmax(corr[shifted_index_range_mask])
-    lag = index_range_mask[argmax_corr]
-    return max_corr, lag
-  elif type == 'full':
-    return corr[shifted_index_range_mask], index_range_mask
-
+    if type == 'max':
+        max_corr = np.max(corr[shifted_index_range_mask])
+        argmax_corr = np.argmax(corr[shifted_index_range_mask])
+        lag = index_range_mask[argmax_corr]
+        return max_corr, lag
+    elif type == 'full':
+        return corr[shifted_index_range_mask], index_range_mask
 
 def cross_prod(
-    y1,
-    y2,
-    index_range=None):
-  """Calculates the cross correlation and lags without normalization.
+        y1,
+        y2,
+        index_range=None):
+    """Calculates the cross correlation and lags without normalization.
 
-  Args:
-    index_range: two entries list. [min_index, max_index]. If the index_range is
-        beyond the range of the array, it will
-        automatically be clipped to the bounds.
-  """
-  if y1.shape != y2.shape:
-    raise ValueError('The lengths of the inputs should be the same.')
-  if len(y1.shape) == 1:
-    num_bins = len(y1)
-  elif len(y1.shape) == 2:
-    num_bins = y1.shape[1]
+    Args:
+        index_range: two entries list. [min_index, max_index]. If the index_range is
+                beyond the range of the array, it will
+                automatically be clipped to the bounds.
+    """
+    if y1.shape != y2.shape:
+        raise ValueError('The lengths of the inputs should be the same.')
+    if len(y1.shape) == 1:
+        num_bins = len(y1)
+    elif len(y1.shape) == 2:
+        num_bins = y1.shape[1]
 
-  corr = scipy.signal.correlate(y1, y2, mode='same')
-  # The unbiased sample size is N - lag.
-  unbiased_sample_size = scipy.signal.correlate(
-      np.ones(num_bins), np.ones(num_bins), mode='same')
-  corr = corr / unbiased_sample_size
-  shift = num_bins // 2
+    corr = scipy.signal.correlate(y1, y2, mode='same')
+    # The unbiased sample size is N - lag.
+    unbiased_sample_size = scipy.signal.correlate(
+            np.ones(num_bins), np.ones(num_bins), mode='same')
+    corr = corr / unbiased_sample_size
+    shift = num_bins // 2
 
-  if index_range is None:
-    return corr, np.arange(num_bins) - shift
+    if index_range is None:
+        return corr, np.arange(num_bins) - shift
 
-  index_range = np.array(index_range).astype(int)
-  shifted_index_range = index_range + shift
-  index_range_mask = np.array(
-      range(index_range[0], index_range[1] + 1))
-  shifted_index_range_mask = np.array(
-      range(shifted_index_range[0], shifted_index_range[1] + 1))
-  return corr[shifted_index_range_mask], index_range_mask
-
+    index_range = np.array(index_range).astype(int)
+    shifted_index_range = index_range + shift
+    index_range_mask = np.array(
+            range(index_range[0], index_range[1] + 1))
+    shifted_index_range_mask = np.array(
+            range(shifted_index_range[0], shifted_index_range[1] + 1))
+    return corr[shifted_index_range_mask], index_range_mas
 
 def array_shift(x, shift, zero_pad=False):
-  """Shift the array.
+    """Shift the array.
 
-  Args:
-    shift: Negtive to shift left, positive to shift right.
-  """
-  x = np.array(x)
-  shift = np.array(shift)
-  if len(x.shape) > 2:
-    raise ValueError('x can only be an array of a matrix.')
+    Args:
+        shift: Negtive to shift left, positive to shift right.
+    """
+    x = np.array(x)
+    shift = np.array(shift)
+    if len(x.shape) > 2:
+        raise ValueError('x can only be an array of a matrix.')
 
-  # If `shift` is a scalar.
-  if len(shift.shape) == 0:
-    # If x is 1D array, shift along axis=0, if x is 2D matrix, shift along rows.
-    x = np.roll(x, shift, axis=len(x.shape)-1)
-    # pad zeros to the new positions.
-    if zero_pad and len(x.shape) == 1 and shift > 0:
-      x[:shift] = 0
-    elif zero_pad and len(x.shape) == 1 and shift < 0:
-      x[shift:] = 0
-    elif zero_pad and len(x.shape) > 1 and shift > 0:
-      x[:, :shift] = 0
-    elif zero_pad and len(x.shape) > 1 and shift > 0:
-      x[:, shift:] = 0
-  # Shift matrix rows independently.
-  elif len(shift.shape) == 1: 
-    if len(shift) != x.shape[0]:
-      raise ValueError('length of shift should be equal to rows of x.')
-    for row, s in enumerate(shift):
-      x[row] = np.roll(x[row], s)
-      # pad zeros to the new positions.
-      if zero_pad and s > 0:
-        x[row, :s] = 0
-      elif zero_pad and s < 0:
-        x[row, s:] = 0
-  else:
-    raise ValueError('shift can be a scalar or a vector for each row in x.')
-  return x
+    # If `shift` is a scalar.
+    if len(shift.shape) == 0:
+        # If x is 1D array, shift along axis=0, if x is 2D matrix, shift along rows.
+        x = np.roll(x, shift, axis=len(x.shape)-1)
+        # pad zeros to the new positions.
+        if zero_pad and len(x.shape) == 1 and shift > 0:
+            x[:shift] = 0
+        elif zero_pad and len(x.shape) == 1 and shift < 0:
+            x[shift:] = 0
+        elif zero_pad and len(x.shape) > 1 and shift > 0:
+            x[:, :shift] = 0
+        elif zero_pad and len(x.shape) > 1 and shift > 0:
+            x[:, shift:] = 0
+    # Shift matrix rows independently.
+    elif len(shift.shape) == 1: 
+        if len(shift) != x.shape[0]:
+            raise ValueError('length of shift should be equal to rows of x.')
+        for row, s in enumerate(shift):
+            x[row] = np.roll(x[row], s)
+            # pad zeros to the new positions.
+            if zero_pad and s > 0:
+                x[row, :s] = 0
+            elif zero_pad and s < 0:
+                x[row, s:] = 0
+    else:
+        raise ValueError('shift can be a scalar or a vector for each row in x.')
+    return x
 
-
-def construct_b_spline_basis(
-    spline_order,
-    knots,
-    dx,
-    add_constant_basis=True,
-    show_plot=False):
-  """Constructs B-spline basis."""
-  num_basis = len(knots) - spline_order - 1
-  num_rows = int(np.round((knots[-1] - knots[0]) / dx)) + 1
-  x = np.linspace(knots[0], knots[-1], num_rows)
-  basis_matrix = np.zeros((len(x), num_basis))
-  interpolate_token=[0, 0, spline_order]
-  interpolate_token[0] = np.array(knots)
-
-  for i in range(num_basis):
-    basis_coefficients = [0] * num_basis
-    basis_coefficients[i] = 1.0 
-    interpolate_token[1] = basis_coefficients
-    y = scipy.interpolate.splev(x, interpolate_token)
-    basis_matrix[:, i] = y
-
-  if add_constant_basis:
-    basis_matrix = np.hstack((np.ones((len(x), 1)), basis_matrix))
-
-  if show_plot:
-    plt.figure()
-    plt.plot(x, basis_matrix, '.')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.show()
-
-  return x, basis_matrix
-
-
-def construct_b_spline_basis_even_knots(
-    spline_order,
-    num_knots,
-    x_range,
-    dx,
-    add_constant_basis=True,
-    show_plot=False):
-  """Constructs B-spline basis with knots equal distance.
-
-  Args:
-    x_range: [left_end, right_end].
-  """
-  # construct_b_spline_basis
-  knots = np.linspace(x_range[0], x_range[1], num_knots)
-  knots = np.hstack((np.ones(spline_order) * x_range[0],
-                     knots,
-                     np.ones(spline_order) * x_range[1]))
-
-  return construct_b_spline_basis(
-      spline_order, knots, dx, add_constant_basis, show_plot)
-
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-  """Design of the Butterworth bandpass filter."""
-  nyq = 0.5 * fs
-  low = lowcut / nyq
-  high = highcut / nyq
-  b, a = signal.butter(order, [low, high], btype='band')
-  return b, a
-
-
-def butterworth_bandpass_filter(x, lowcut, highcut, fs, order=4):
-  """Butter bandpass filter.
-
-  Args:
-    x: Input signal.
-    fs: Sampling frequency.
-    order: The order of the Butterworth filter.
-  """
-  b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-  y = signal.lfilter(b, a, x)
-  return y
-
-
-def get_power_spectrum(
-    x,
-    fs,
-    output_figure_path=None,
-    show_figure=False):
-  """Gets the power spectrum."""
-  num_per_segment = 2 ** 12
-  f, Pxx_den = signal.welch(x, fs, nperseg=1024)
-
-  plt.figure()
-  # plt.semilogy(f, Pxx_den)
-  plt.plot(f, Pxx_den)
-  plt.xlabel('frequency [Hz]')
-  plt.ylabel('PSD [V**2/Hz]')
-
-  if output_figure_path:
-    plt.savefig(output_figure_path)
-    print('Save figure to: ', output_figure_path)
-  if show_figure:
-    plt.show()
-  plt.close()
-
-  return f, Pxx_den
-
-
-def get_spectrogram(
-    x,
-    fs,
-    time_offset=0,
-    output_figure_path=None,
-    show_figure=True):
-  """Get the spectrum along time.
-
-  Args:
-    x: Input signal.
-    fs: Sampling frequency.
-  """
-  # `nfft` > `nperseg` means apply zero padding to make the spectrum look
-  # smoother, but it does not provide extra informaiton. `noverlap` is the
-  # overlap between adjacent sliding windows, the larger, the more overlap.
-  # num_per_segment = 2 ** 8
-  num_per_segment = 250
-  f, t, Sxx = signal.spectrogram(
-      x, fs,
-      nperseg=num_per_segment,
-      noverlap=num_per_segment // 50 * 49,
-      nfft=num_per_segment * 8)
-  t = np.array(t) + time_offset
-  # Used to debug the positions of the sliding window.
-  # print(np.array(t))
-
-  plt.figure(figsize=(10, 8))
-  # plt.pcolormesh(t, f, np.log(Sxx))  # The log scale plot.
-  # plt.pcolormesh(t, f, Sxx, vmax=np.max(Sxx) / 10)
-  plt.pcolormesh(t, f, Sxx, vmax=200)
-  plt.ylim(0, 100)
-  plt.colorbar()
-  plt.ylabel('Frequency [Hz]')
-  plt.xlabel('Time [sec]')
-
-  if output_figure_path:
-    plt.savefig(output_figure_path)
-    print('Save figure to: ', output_figure_path)
-  if show_figure:
-    plt.show()
-  plt.close()
-
+##### Correlation calculation
 
 def fisher_transform(rho):
-  """Fisher transformation for correlation.
+    """Fisher transformation for correlation.
 
-  z = 0.5 * log((1 + rho) / (1 - rho))
-  """
-  rho = np.array(rho)
-  z = 0.5 * np.log((1 + rho) / (1 - rho))
-  return z
-
+    z = 0.5 * log((1 + rho) / (1 - rho))
+    """
+    rho = np.array(rho)
+    z = 0.5 * np.log((1 + rho) / (1 - rho))
+    return z
 
 def marginal_corr_from_cov(cov):
-  """Calculates marginal correlation matrix from covariance matrix.
+    """Calculates marginal correlation matrix from covariance matrix.
 
-  Args:
-    cov: N x N matrix.
-  """
-  cov_diag_sqrt = np.sqrt(np.diag(cov))
-  corr = cov / np.outer(cov_diag_sqrt, cov_diag_sqrt)
+    Args:
+        cov: N x N matrix.
+    """
+    cov_diag_sqrt = np.sqrt(np.diag(cov))
+    corr = cov / np.outer(cov_diag_sqrt, cov_diag_sqrt)
 
-  return corr
-
+    return corr
 
 def partial_corr_from_cov(cov):
-  """Calculates partial correlation matrix from covariance matrix.
+    """Calculates partial correlation matrix from covariance matrix.
 
-  Args:
-    cov: N x N matrix.
-  """
-  theta = np.linalg.inv(cov)
-  theta_diag_sqrt = np.sqrt(np.diag(theta))
-  corr = - theta / np.outer(theta_diag_sqrt, theta_diag_sqrt)
+    Args:
+        cov: N x N matrix.
+    """
+    theta = np.linalg.inv(cov)
+    theta_diag_sqrt = np.sqrt(np.diag(theta))
+    corr = - theta / np.outer(theta_diag_sqrt, theta_diag_sqrt)
 
-  return corr
-
+    return corr
 
 def xcorr(x, y,verbose=False):
-  """Cross correlation coefficient.
+    """Cross correlation coefficient.
 
-  The lag centers at 0 if two arrays have equal length.
+    The lag centers at 0 if two arrays have equal length.
 
-  References:
-  https://www.mathworks.com/help/signal/ug/
-    confidence-intervals-for-sample-autocorrelation.html
-  """
-  length = len(x)
-  x = x - np.mean(x)
-  y = y - np.mean(y)
-  sigma = np.sqrt(np.dot(x, x) * np.dot(y, y))
-  xcorr = np.correlate(x, y, mode='same') / sigma
-  lag = np.arange(length) - length // 2
+    References:
+    https://www.mathworks.com/help/signal/ug/
+        confidence-intervals-for-sample-autocorrelation.html
+    """
+    length = len(x)
+    x = x - np.mean(x)
+    y = y - np.mean(y)
+    sigma = np.sqrt(np.dot(x, x) * np.dot(y, y))
+    xcorr = np.correlate(x, y, mode='same') / sigma
+    lag = np.arange(length) - length // 2
 
-  # 95% CI, 0.025 on each side.
-  alpha = scipy.stats.norm.ppf(0.975)
-  CI_level = alpha / np.sqrt(length)
+    # 95% CI, 0.025 on each side.
+    alpha = scipy.stats.norm.ppf(0.975)
+    CI_level = alpha / np.sqrt(length)
 
-  if verbose:
-    plt.figure()
-    plt.plot(lag, xcorr)
-    plt.axhline(y=CI_level, ls=':')
-    plt.axhline(y=-CI_level, ls=':')
+    if verbose:
+        plt.figure()
+        plt.plot(lag, xcorr)
+        plt.axhline(y=CI_level, ls=':')
+        plt.axhline(y=-CI_level, ls=':')
 
-  return lag, xcorr, CI_level
+    return lag, xcorr, CI_level
 
 
+
+##### Network plot
 def plot_networkx_graph(G):
-  """Plot networkx graph."""
-  if nx.is_directed(G):
-    print('Directed')
-    directed = True
-  else:
-    print('Un-directed')
-    directed = False
-    # cliques = nx.find_cliques(G)
-    # print(list(cliques))
+    """Plot networkx graph."""
+    if nx.is_directed(G):
+        print('Directed')
+        directed = True
+    else:
+        print('Un-directed')
+        directed = False
+        # cliques = nx.find_cliques(G)
+        # print(list(cliques))
 
-  print(f'num_nodes {G.number_of_nodes()}  num_edges {G.number_of_edges()}')
-  plt.figure(figsize=[11, 4])
-  plt.subplot(121)
-  # pos = nx.spring_layout(graph, scale=2)
-  # pos = nx.drawing.random_layout(graph)
-  pos=nx.circular_layout(G)
-  # nx.draw(G, pos=pos)
+    print(f'num_nodes {G.number_of_nodes()}    num_edges {G.number_of_edges()}')
+    plt.figure(figsize=[11, 4])
+    plt.subplot(121)
+    # pos = nx.spring_layout(graph, scale=2)
+    # pos = nx.drawing.random_layout(graph)
+    pos=nx.circular_layout(G)
+    # nx.draw(G, pos=pos)
 
-  if len(nx.get_node_attributes(G, 'weight')) > 0:
-    edges, weights = zip(*nx.get_edge_attributes(G,'weight').items())
-    nx.draw(G, pos, node_color='b', edgelist=edges, edge_color=weights,
-            width=2, edge_cmap=plt.cm.jet)
-  else:
-    nx.draw(G, pos, node_color='b', width=2, edge_cmap=plt.cm.jet)
-  plt.subplot(122)
-  adj_mat = nx.to_numpy_matrix(G)
-  seaborn.heatmap(adj_mat)
-  plt.show()
-
+    if len(nx.get_node_attributes(G, 'weight')) > 0:
+        edges, weights = zip(*nx.get_edge_attributes(G,'weight').items())
+        nx.draw(G, pos, node_color='b', edgelist=edges, edge_color=weights,
+                        width=2, edge_cmap=plt.cm.jet)
+    else:
+        nx.draw(G, pos, node_color='b', width=2, edge_cmap=plt.cm.jet)
+    plt.subplot(122)
+    adj_mat = nx.to_numpy_matrix(G)
+    seaborn.heatmap(adj_mat)
+    plt.show()
 
 def plot_networkx_adj(G):
-  """Plot networkx graph."""
-  if nx.is_directed(G):
-    print('Directed')
-    directed = True
-  else:
-    print('Un-directed')
-    directed = False
-    cliques = nx.find_cliques(G)
+    """Plot networkx graph."""
+    if nx.is_directed(G):
+        print('Directed')
+        directed = True
+    else:
+        print('Un-directed')
+        directed = False
+        cliques = nx.find_cliques(G)
 
-  print(f'num_nodes {G.number_of_nodes()}  num_edges {G.number_of_edges()}')
-  plt.figure(figsize=[5, 4])
-  adj_mat = nx.to_numpy_matrix(G)
-  seaborn.heatmap(adj_mat)
-  plt.show()
-
-
+    print(f'num_nodes {G.number_of_nodes()}    num_edges {G.number_of_edges()}')
+    plt.figure(figsize=[5, 4])
+    adj_mat = nx.to_numpy_matrix(G)
+    sns.heatmap(adj_mat)
+    plt.show()
 
 
-##### Mine 
+
+
+
+##### Frequency domain analysis 
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     nyq = 0.5 * fs
@@ -636,6 +490,18 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
     high = highcut / nyq
     b, a = signal.butter(order, [low, high], btype='band')
     return b, a
+
+def butterworth_bandpass_filter(x, lowcut, highcut, fs, order=4):
+    """Butter bandpass filter.
+
+    Args:
+        x: Input signal.
+        fs: Sampling frequency.
+        order: The order of the Butterworth filter.
+    """
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = signal.lfilter(b, a, x)
+    return y
 
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
@@ -696,6 +562,75 @@ def get_power_phase(data, npadding, lowcut, highcut):
         phase[:,:,itrial] = instantaneous_phase
         power[:,:,itrial] = instantaneous_power
     return phase, power
+
+def get_power_spectrum(
+        x,
+        fs,
+        output_figure_path=None,
+        show_figure=False):
+    """Gets the power spectrum."""
+    num_per_segment = 2 ** 12
+    f, Pxx_den = signal.welch(x, fs, nperseg=1024)
+
+    plt.figure()
+    # plt.semilogy(f, Pxx_den)
+    plt.plot(f, Pxx_den)
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('PSD [V**2/Hz]')
+
+    if output_figure_path:
+        plt.savefig(output_figure_path)
+        print('Save figure to: ', output_figure_path)
+    if show_figure:
+        plt.show()
+    plt.close()
+
+    return f, Pxx_den
+
+def get_spectrogram(
+    x,
+    fs,
+    time_offset=0,
+    output_figure_path=None,
+    show_figure=True):
+    """Get the spectrum along time.
+
+    Args:
+        x: Input signal.
+        fs: Sampling frequency.
+    """
+    # `nfft` > `nperseg` means apply zero padding to make the spectrum look
+    # smoother, but it does not provide extra informaiton. `noverlap` is the
+    # overlap between adjacent sliding windows, the larger, the more overlap.
+    # num_per_segment = 2 ** 8
+    num_per_segment = 250
+    f, t, Sxx = signal.spectrogram(
+        x, fs,
+        nperseg=num_per_segment,
+        noverlap=num_per_segment // 50 * 49,
+        nfft=num_per_segment * 8)
+    t = np.array(t) + time_offset
+    # Used to debug the positions of the sliding window.
+    # print(np.array(t))
+
+    plt.figure(figsize=(10, 8))
+    # plt.pcolormesh(t, f, np.log(Sxx))  # The log scale plot.
+    # plt.pcolormesh(t, f, Sxx, vmax=np.max(Sxx) / 10)
+    plt.pcolormesh(t, f, Sxx, vmax=200)
+    plt.ylim(0, 100)
+    plt.colorbar()
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+
+    if output_figure_path:
+        plt.savefig(output_figure_path)
+        print('Save figure to: ', output_figure_path)
+    if show_figure:
+        plt.show()
+    plt.close()
+
+
+##### LFP/CSD utils
 
 def check_and_get_size(lfp):
     if lfp.ndim == 3:
