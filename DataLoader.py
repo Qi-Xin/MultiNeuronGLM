@@ -15,15 +15,13 @@ import utility_functions as utils
 """Three data loading adapters that read or generate the same standard of LFP data from Allen insititue, Prof. Teichert, 
 and simulation. """
 
-class Dataset:
-
+class LFP:
     def remove_padding(self, padding_time):
         npadding = int(padding_time*self.fps)
         self.lfp = self.lfp[:,npadding:-npadding,:]
 
     def get_power_phase(self, padding_time, lowcut=20, highcut=35):
-        self.phase, self.power = get_power_phase(self.lfp, npadding=int(self.fps*padding_time), lowcut=lowcut, highcut=highcut)
-
+        self.phase, self.power = utils.get_power_phase(self.lfp, npadding=int(self.fps*padding_time), lowcut=lowcut, highcut=highcut)
 
     def get_mean_lfp(self):
         self.mean_lfp = self.lfp.mean(axis=2)
@@ -63,14 +61,18 @@ class Dataset:
             plt.xlabel('Time (ms)')
             plt.show()
 
+class Allen_LFP(LFP):
+    def __init__(self):
+        self.x = None
+        self.t = None
 
-class Allen_dataset(Dataset):
+class Allen_dataset:
     """ For drifting gratings, there are 30 unknown trials, 15*5*8=600 trials for 8 directions, 5 temporal frequencies, 
     15 iid trials each conditions. """
     def __init__(self, **kwargs):
         self.source = "Allen"
         self.session_id = kwargs.pop('session_id', 791319847)
-        self.probe_id = kwargs.pop('probe_id', 805008600)
+        # self.probe_id = kwargs.pop('probe_id', 805008600)
         self.stimulus_name = kwargs.pop('stimulus_name',
                                         'drifting_gratings_contrast')
         self.orientation = kwargs.pop('orientation', None)
@@ -79,7 +81,8 @@ class Allen_dataset(Dataset):
         self.stimulus_condition_id = kwargs.pop('stimulus_condition_id', None)
         self.start_time = kwargs.pop('start_time', -0.5)
         self.end_time = kwargs.pop('end_time', 0)
-        self.fps = kwargs.pop('fps', 1250)
+        self.fps = kwargs.pop('fps', 1e3)
+        self.probe = kwargs.pop('probe', ['C'])
         
         from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
         if sys.platform == 'linux':
@@ -91,7 +94,7 @@ class Allen_dataset(Dataset):
         self._cache = EcephysProjectCache.from_warehouse(manifest=self.manifest_path)
         self._session = self._cache.get_session_data(self.session_id)
         if self.stimulus_name == "All":
-            self._presentation_table = self._session.stimulus_presentations
+            self.presentation_table = self._session.stimulus_presentations
         else:
             if isinstance(self.stimulus_name ,str):
                 idx = self._session.stimulus_presentations.stimulus_name == self.stimulus_name
@@ -105,11 +108,73 @@ class Allen_dataset(Dataset):
                 idx = idx & (self._session.stimulus_presentations.contrast.isin(self.contrast))
             if self.stimulus_condition_id != None:
                 idx = idx & (self._session.stimulus_presentations['stimulus_condition_id'].isin(self.stimulus_condition_id))
-            self._presentation_table = self._session.stimulus_presentations [idx]
-        self._presentation_times = self._presentation_table.start_time.values
-        self._presentation_ids = self._presentation_table.index.values
-        
-        # self.get_lfp()
+            self.presentation_table = self._session.stimulus_presentations [idx]
+        self.presentation_times = self._presentation_table.start_time.values
+        self.presentation_ids = self._presentation_table.index.values
+        self.probes = self._session.probes
+
+    def get_trial_metric_per_unit_per_trial(
+        self,
+        unit_ids,
+        metric_type='spike_trains',
+        dt=None,
+        empty_fill=np.nan,
+        verbose=False):
+        """ Get spike trains of selected units.
+        Args:
+            metric_type:
+                    'count',
+                    'spike_trains' (spike histogram, array of binary of interger counts),
+                    'spike_times' (a sequence of spike times)
+        """
+        unit_ids = 0
+        trial_time_window = 0
+        if dt is None:
+            dt = 1/self.fps
+        assert type(self.probe) in [str,list], "\"probe\" has to be either str or list!"
+        if type(self.probe) == str:
+            self.probe = [self.probe]
+        spikes_table = self.session.trialwise_spike_times(
+                self.stimulus_presentation_ids, unit_ids, trial_time_window)
+        num_neurons = len(unit_ids)
+        num_trials = len(stimulus_presentation_ids)
+        metric_table = pd.DataFrame(index=unit_ids, columns=stimulus_presentation_ids)
+        metric_table.index.name = 'units'
+
+        if metric_type == 'spike_trains':
+            time_bins = np.linspace(
+                    trial_time_window[0], trial_time_window[1],
+                    int((trial_time_window[1] - trial_time_window[0]) / dt) + 1)
+
+        for u, unit_id in enumerate(unit_ids):
+            if verbose and (u % 40 == 0):
+                print('neuron:', u)
+            for s, stimulus_presentation_id in enumerate(stimulus_presentation_ids):
+                spike_times = spikes_table[
+                        (spikes_table['unit_id'] == unit_id) &
+                        (spikes_table['stimulus_presentation_id'] ==
+                         stimulus_presentation_id)]
+                spike_times = spike_times['time_since_stimulus_presentation_onset']
+                if metric_type == 'count':
+                    metric_value = len(spike_times) if len(spike_times) != 0 else empty_fill
+                elif metric_type == 'shift':
+                    metric_value = np.mean(spike_times) if len(spike_times) != 0 else empty_fill
+
+                # The spike train is special, since DataFrame does not take array as the
+                # entry, we have to use a separate data structure to store the spike
+                # trains. The metric table is used to store the index mapping.
+                elif metric_type == 'spike_trains':
+                    metric_value = np.histogram(spike_times, time_bins)[0]
+                elif metric_type == 'spike_times':
+                    metric_value = np.array(spike_times)
+                else:
+                    raise TypeError('Wrong type of metric')
+                metric_table.loc[unit_id, stimulus_presentation_id] = metric_value
+        # Very important step, change the datatype to numeric, otherwise functions
+        # like correlation cannot be performed.
+        if metric_type not in ['spike_trains', 'spike_times']:
+            metric_table = metric_table.apply(pd.to_numeric, errors='coerce')
+        return metric_table
 
     def get_running(self, method="Pillow"):
         speed = self._session.running_speed
@@ -130,39 +195,46 @@ class Allen_dataset(Dataset):
             self.running_trial_index = self.mean_speed >= 1
             self.stationary_trial_index = self.mean_speed < 1
 
+    def get_lfp(self, **kwargs):
+        self.probe = kwargs.pop('probe', self.probe)
+        assert type(self.probe) in [str,list], "\"probe\" has to be either str or list!"
+        if type(self.probe) == str:
+            self.probe = [self.probe]
+        for probe_letter in self.probe:
+            probe_name = "probe" + probe_letter
+            self.lfp = {}
+            temp_obj = Allen_LFP()
+            probe_id = self.probes[self.probes['description']==probe_name].index[0]
+            
+            lfp_data = self._session.get_lfp(probe_id)
+            trial_window = np.arange(self.start_time,self.end_time, 1/self.fps)
+            time_selection = np.concatenate([trial_window + t for t in self._presentation_times])
+            inds = pd.MultiIndex.from_product((self._presentation_ids, trial_window), 
+                                        names=('presentation_id', 'time_from_presentation_onset'))
+            ds = lfp_data.sel(time = time_selection, method='nearest').to_dataset(name = 'aligned_lfp')
+            ds = ds.assign(time=inds).unstack('time')
+            lfp_temp = ds['aligned_lfp'].values     # Three dimensions. e.g. (77, 540, 625). Channels, trials, times
+            lfp_temp = np.swapaxes(lfp_temp,1,2)    # Swap time and trial. e.g. (77, 625, 540). Channels, times, trials
+            try:
+                location = self._session.channels[['probe_vertical_position','probe_horizontal_position']]
+                location = location.loc[lfp_data['channel'].values].values
+                x = location[:, 0]      # LFP spatial locations , microns
+            except:
+                location = np.arange(0,lfp_temp.shape[0])*40.0
+                x = location
 
-
-    def get_lfp(self):
-        ### May separate into two smaller functions, which also incorperate with get_Allen_spike_train
-
-        lfp_data = self._session.get_lfp(self.probe_id)
-        trial_window = np.arange(self.start_time,self.end_time, 1/self.fps)
-        time_selection = np.concatenate([trial_window + t for t in self._presentation_times])
-        inds = pd.MultiIndex.from_product((self._presentation_ids, trial_window), 
-                                      names=('presentation_id', 'time_from_presentation_onset'))
-        ds = lfp_data.sel(time = time_selection, method='nearest').to_dataset(name = 'aligned_lfp')
-        ds = ds.assign(time=inds).unstack('time')
-        self.lfp = ds['aligned_lfp'].values     # Three dimensions. e.g. (77, 540, 625). Channels, trials, times
-        self.lfp = np.swapaxes(self.lfp,1,2)    # Swap time and trial. e.g. (77, 625, 540). Channels, times, trials
-        try:
-            location = self._session.channels[['probe_vertical_position','probe_horizontal_position']]
-            location = location.loc[lfp_data['channel'].values].values
-            self.x = location[:, 0]      # LFP spatial locations , microns
-        except:
-            location = np.arange(0,self.lfp.shape[0])*40.0
-            self.x = location
-
-        self.t = np.linspace(self.start_time,self.end_time,self.lfp.shape[1] )[:,None]
-        self.x = self.x[:, None]
-        self.channel = lfp_data["channel"].values
-        try:
-            self.structure_acronyms, self.intervals_lfp = self._session.channel_structure_intervals(self.channel)
-        except:
-            self.structure_acronyms = np.array([np.nan], dtype=object)
-            self.intervals_lfp = np.array([ 0, self.lfp.shape[0]])
-        self.nx, self.nt, self.ntrial, self.lfp = utils.check_and_get_size(self.lfp)
-        self.get_mean_lfp()
-
+            temp_obj.t = np.linspace(self.start_time,self.end_time,lfp_temp.shape[1] )[:,None]
+            temp_obj.x = x[:, None]
+            temp_obj.channel = lfp_data["channel"].values
+            try:
+                temp_obj.structure_acronyms, temp_obj.intervals_lfp = self._session.channel_structure_intervals(self.channel)
+            except:
+                temp_obj.structure_acronyms = np.array([np.nan], dtype=object)
+                temp_obj.intervals_lfp = np.array([ 0, lfp_temp.shape[0]])
+            temp_obj.nx, temp_obj.nt, temp_obj.ntrial, temp_obj.lfp = utils.check_and_get_size(lfp_temp)
+            temp_obj.get_mean_lfp()
+            self.lfp[probe_letter] = temp_obj
+    
     def get_spike_train_sparse(self):
         self._units_pd = self._session.units[(self._session.units.probe_id == self.probe_id)]
         self.unit_id_list = self._units_pd.index.values
@@ -224,7 +296,6 @@ class Allen_dataset(Dataset):
                         temp_spike_train[None,:], time_line, basis=f_basis, Omega=f_Omega, constant_fit=False)
                 self.fr[i, :, trial] = np.exp(log_lambda_hat)
 
-        
     def get_kernel_fr(self, bandwidth=0.03):
         self.bandwidth = bandwidth
         from sklearn.neighbors import KernelDensity
@@ -264,9 +335,16 @@ class Allen_dataset(Dataset):
         self.emp_fr = emp_fr
         return emp_fr
     
+    def print_session_info(self):
+        """Print a list of information for the session."""
+        if self.session is None:
+            print('session is None')
+            return
 
+        print(self.session._metadata)
+        print('num units:', self.session.num_units)
 
-class Tobias_dataset(Dataset):
+class Tobias_LFP(LFP):
     def __init__(self, **kwargs):
         self.source = "Tobias"
         self.dataset_id = kwargs.pop('dataset_id', 'Walter_20160512')
@@ -289,9 +367,16 @@ class Tobias_dataset(Dataset):
                                 np.nonzero(self.x > 1500)[0][0], self.nx])
         self.structure_acronyms = np.array(['Superficial', 'Medium', 'Deep'])
     
-class Simulation_dataset(Dataset):
+class Simulation_LFP(LFP):
     def __init__(self, **kwargs):
         """To be done later. Need to include: gaussian bumps; the cases from jupyter notebooks"""
+        if sys.platform == 'linux':
+            sys.path.append("/home/qix/rCSD")
+        else:
+            sys.path.append("D:/Github/rCSD")
+        import ground_true_csd_bank
+        from forward_models import b_fwd_1d, fwd_model_1d
+        
         self.source = "Simulation"
         self.noise_amp = kwargs.pop('noise_amp', 0.03)
         if 'gt_csd' in kwargs:
@@ -305,7 +390,7 @@ class Simulation_dataset(Dataset):
             self.get_lfp()
 
     def get_csd(self):
-        import ground_true_csd_bank
+
         self.R = 150
         self.nx = 24
         self.nz = 5*23
@@ -324,19 +409,3 @@ class Simulation_dataset(Dataset):
                                 np.nonzero(self.x > 1500)[0][0], self.nx])
         self.structure_acronyms = np.array(['Superficial', 'Medium', 'Deep'])
 
-
-
-
-
-
-
-
-
-
-
-def pooling(data, merge):
-    new_data = np.zeros((data.shape[0], int(data.shape[1]/merge), data.shape[2]))
-    for i in range(merge):
-        new_data += data[:, i::merge, :]
-    new_data = new_data/merge
-    return new_data
