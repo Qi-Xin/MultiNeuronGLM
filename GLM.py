@@ -125,18 +125,17 @@ def construct_b_spline_basis_even_knots(
     dx,
     add_constant_basis=True,
     show_plot=False):
-  """Constructs B-spline basis with knots equal distance.
+    """Constructs B-spline basis with knots equal distance.
 
-  Args:
-    x_range: [left_end, right_end].
-  """
-  # construct_b_spline_basis
+    Args:
+        x_range: [left_end, right_end].
+    """
+    # construct_b_spline_basis
   	knots = np.linspace(x_range[0], x_range[1], num_knots)
   	knots = np.hstack((np.ones(spline_order) * x_range[0], 
 						knots,
 						np.ones(spline_order) * x_range[1]))
-
-  	return construct_b_spline_basis(
+    return construct_b_spline_basis(
       	spline_order, knots, dx, add_constant_basis, show_plot)
 
 

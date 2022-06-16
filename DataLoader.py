@@ -82,7 +82,7 @@ class Allen_dataset:
         self.start_time = kwargs.pop('start_time', -0.5)
         self.end_time = kwargs.pop('end_time', 0)
         self.fps = kwargs.pop('fps', 1e3)
-        self.probe = kwargs.pop('probe', ['C'])
+        self.selected_probe = kwargs.pop('selected_probe', ['probeC'])
         
         from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
         if sys.platform == 'linux':
@@ -113,13 +113,7 @@ class Allen_dataset:
         self.presentation_ids = self._presentation_table.index.values
         self.probes = self._session.probes
 
-    def get_trial_metric_per_unit_per_trial(
-        self,
-        unit_ids,
-        metric_type='spike_trains',
-        dt=None,
-        empty_fill=np.nan,
-        verbose=False):
+    def get_trial_metric_per_unit_per_trial(self, metric_type='spike_trains', dt=None, empty_fill=np.nan, verbose=False):
         """ Get spike trains of selected units.
         Args:
             metric_type:
@@ -127,13 +121,18 @@ class Allen_dataset:
                     'spike_trains' (spike histogram, array of binary of interger counts),
                     'spike_times' (a sequence of spike times)
         """
+        self.selected_probe
+        probes = ['probeC', 'probeD', 'probeE']
+        selected_units = session.units[
+            session.units['ecephys_structure_acronym'].isin(util.VISUAL_AREA) &
+            session.units['probe_description'].isin(probes)]
         unit_ids = 0
         trial_time_window = 0
         if dt is None:
             dt = 1/self.fps
         assert type(self.probe) in [str,list], "\"probe\" has to be either str or list!"
-        if type(self.probe) == str:
-            self.probe = [self.probe]
+        if type(self.select_probe) == str:
+            self.select_probe = [self.select_probe]
         spikes_table = self.session.trialwise_spike_times(
                 self.stimulus_presentation_ids, unit_ids, trial_time_window)
         num_neurons = len(unit_ids)

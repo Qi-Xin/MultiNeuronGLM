@@ -663,6 +663,13 @@ def moving_average(lfp, pooling_size=1, moving_size=1):
             lfp_smooth[None, :, None] = temp[None, :, None]
     return lfp_smooth
     
+def pooling(data, merge):
+    new_data = np.zeros((data.shape[0], int(data.shape[1]/merge), data.shape[2]))
+    for i in range(merge):
+        new_data += data[:, i::merge, :]
+    new_data = new_data/merge
+    return new_data
+
 def normalize(x):
     return x/np.max(np.abs(x), axis=(0, 1))
 
