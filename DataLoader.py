@@ -83,6 +83,13 @@ class Allen_dataset:
         self.end_time = kwargs.pop('end_time', 0)
         self.fps = kwargs.pop('fps', 1e3)
         self.selected_probe = kwargs.pop('selected_probe', ['probeC'])
+        self.selected_probe = kwargs.pop('selected_probe', self.selected_probe)
+        assert type(self.selected_probe) in [str,list], "\"probe\" has to be either str or list!"
+        if self.selected_probe=='all':
+            self.selected_probe = ['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']
+        if type(self.selected_probe) == str:
+            self.selected_probe = [self.selected_probe]
+        assert set(self.selected_probe).issubset(['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']) 
         
         from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
         if sys.platform == 'linux':
@@ -109,11 +116,18 @@ class Allen_dataset:
             if self.stimulus_condition_id != None:
                 idx = idx & (self._session.stimulus_presentations['stimulus_condition_id'].isin(self.stimulus_condition_id))
             self.presentation_table = self._session.stimulus_presentations [idx]
-        self.presentation_times = self._presentation_table.start_time.values
-        self.presentation_ids = self._presentation_table.index.values
+        self.presentation_times = self.presentation_table.start_time.values
+        self.presentation_ids = self.presentation_table.index.values
         self.probes = self._session.probes
 
-    def get_trial_metric_per_unit_per_trial(self, metric_type='spike_trains', dt=None, empty_fill=np.nan, verbose=False):
+    def get_trial_metric_per_unit_per_trial(
+        self, 
+        metric_type='spike_trains', 
+        area='visual',
+        dt=None, 
+        empty_fill=np.nan, 
+        verbose=False):
+
         """ Get spike trains of selected units.
         Args:
             metric_type:
@@ -121,18 +135,16 @@ class Allen_dataset:
                     'spike_trains' (spike histogram, array of binary of interger counts),
                     'spike_times' (a sequence of spike times)
         """
-        self.selected_probe
-        probes = ['probeC', 'probeD', 'probeE']
-        selected_units = session.units[
-            session.units['ecephys_structure_acronym'].isin(util.VISUAL_AREA) &
-            session.units['probe_description'].isin(probes)]
-        unit_ids = 0
-        trial_time_window = 0
+        if area == 'visual':
+            self.selected_units = session.units[
+                session.units['ecephys_structure_acronym'].isin(util.VISUAL_AREA) &
+                session.units['probe_description'].isin(self.selected_probe)]
+        else:
+            self.selected_units = session.units[
+                session.units['probe_description'].isin(self.selected_probe)]
+        trial_time_window = [self.start_time, self.end_time]
         if dt is None:
             dt = 1/self.fps
-        assert type(self.probe) in [str,list], "\"probe\" has to be either str or list!"
-        if type(self.select_probe) == str:
-            self.select_probe = [self.select_probe]
         spikes_table = self.session.trialwise_spike_times(
                 self.stimulus_presentation_ids, unit_ids, trial_time_window)
         num_neurons = len(unit_ids)
@@ -145,7 +157,7 @@ class Allen_dataset:
                     trial_time_window[0], trial_time_window[1],
                     int((trial_time_window[1] - trial_time_window[0]) / dt) + 1)
 
-        for u, unit_id in enumerate(unit_ids):
+        for u, unit_id in enumerate(self.selected_units):
             if verbose and (u % 40 == 0):
                 print('neuron:', u)
             for s, stimulus_presentation_id in enumerate(stimulus_presentation_ids):
@@ -195,10 +207,7 @@ class Allen_dataset:
             self.stationary_trial_index = self.mean_speed < 1
 
     def get_lfp(self, **kwargs):
-        self.probe = kwargs.pop('probe', self.probe)
-        assert type(self.probe) in [str,list], "\"probe\" has to be either str or list!"
-        if type(self.probe) == str:
-            self.probe = [self.probe]
+
         for probe_letter in self.probe:
             probe_name = "probe" + probe_letter
             self.lfp = {}
@@ -266,7 +275,6 @@ class Allen_dataset:
                 row = np.hstack( (row, np.array(temp)*self.fps) )
                 col = np.hstack( (col, trial*np.ones(nspike)) )
                 data = np.hstack( (data, np.ones(nspike)) )
-                
             
             self.spike_train[i,:,:] = csr_matrix((data, (row, col)), shape=(self.nt, self.ntrial)).toarray()
         self.spike_count = self.spike_train.sum(axis=(1))

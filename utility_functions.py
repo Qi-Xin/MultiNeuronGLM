@@ -121,6 +121,7 @@ same angle (probeA = AM, probeB = PM, probeC = V1, probeD = LM, probeE = AL,
 probeF = RL). However, the targeting is not always accurate, so the actual 
 recorded region may be different.
 """
+
 ##### Colors for plot
 # Orange.
 MIDBRAIN = ['APN', 'MB', 'AT', 'DT', 'PPT', 'NOT', 'LT', 'OP',

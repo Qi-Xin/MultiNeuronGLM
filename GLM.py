@@ -21,7 +21,7 @@ import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
-def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1):
+def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, verbose=False):
     """ Generating raised cosine basis
 
     Args:
@@ -49,6 +49,10 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1):
     nt = len(iht)
     ff = lambda x, c, dc: (np.cos(np.maximum(-np.pi,np.minimum(np.pi, (x-c)*np.pi/dc/2)))+1)/2
     ihbasis = ff(np.matlib.repmat(nlin(iht+nonlinear), 1, num), np.matlib.repmat(ctrs, nt, 1), db)
+    if verbose:
+        plt.figure()
+        plt.plot(ihbasis, '-')
+        plt.show()
     return ihbasis
 
 def conv(sp, kernel):
@@ -68,7 +72,7 @@ def conv(sp, kernel):
     G[np.abs(G)<1e-13] = 0
     return G
 
-def make_spline(start=0, end=1e3, dt=1, num=10):
+def make_spline(start=0, end=1e3, dt=1, num=10, verbose=False):
     from bspline import Bspline
     num = num-1
     knot_vector = np.hstack((np.array([start,start]), np.linspace(start,end,num), np.array([end,end])))
@@ -81,20 +85,24 @@ def make_spline(start=0, end=1e3, dt=1, num=10):
     N = N[0:-1, :]
     max_scale = np.max(N,axis=0)
     N = N/max_scale
+    if verbose:
+        plt.figure()
+        plt.plot(N, '-')
+        plt.show()
     return N
 
-def construct_b_spline_basis(
+def make_b_spline_basis_arbitrary_knots(
         spline_order,
         knots,
-        dx,
-        add_constant_basis=True,
-        show_plot=False):
+        dt,
+        add_constant_basis,
+        verbose):
     """Constructs B-spline basis."""
 
     num_basis = len(knots) - spline_order - 1
-    num_rows = int(np.round((knots[-1] - knots[0]) / dx)) + 1
-    x = np.linspace(knots[0], knots[-1], num_rows)
-    basis_matrix = np.zeros((len(x), num_basis))
+    num_rows = int(np.round((knots[-1] - knots[0]) / dt)) + 1
+    t = np.linspace(knots[0], knots[-1], num_rows)
+    basis_matrix = np.zeros((len(t), num_basis))
     interpolate_token=[0, 0, spline_order]
     interpolate_token[0] = np.array(knots)
 
@@ -102,41 +110,45 @@ def construct_b_spline_basis(
         basis_coefficients = [0] * num_basis
         basis_coefficients[i] = 1.0 
         interpolate_token[1] = basis_coefficients
-        y = scipy.interpolate.splev(x, interpolate_token)
+        y = scipy.interpolate.splev(t, interpolate_token)
         basis_matrix[:, i] = y
 
     if add_constant_basis:
-        basis_matrix = np.hstack((np.ones((len(x), 1)), basis_matrix))
-
-    if show_plot:
+        basis_matrix = np.hstack((np.ones((len(t), 1)), basis_matrix))
+    max_scale = np.max(basis_matrix,axis=0)
+    basis_matrix = basis_matrix/max_scale
+    if verbose:
         plt.figure()
-        plt.plot(x, basis_matrix, '.')
+        plt.plot(t, basis_matrix)
         plt.xlabel('x')
         plt.ylabel('y')
         plt.show()
 
-    return x, basis_matrix
+    return basis_matrix
 
-
-def construct_b_spline_basis_even_knots(
-    spline_order,
-    num_knots,
-    x_range,
-    dx,
+def make_b_spline_basis(
+    num_basis=10,
+    t_max=1000,
+    t_min=0,
     add_constant_basis=True,
-    show_plot=False):
+    dt=1,
+    spline_order=2,
+    verbose=False):
     """Constructs B-spline basis with knots equal distance.
 
     Args:
-        x_range: [left_end, right_end].
+        t_range: [left_end, right_end].
     """
     # construct_b_spline_basis
-  	knots = np.linspace(x_range[0], x_range[1], num_knots)
-  	knots = np.hstack((np.ones(spline_order) * x_range[0], 
+    num_knots = num_basis-spline_order+1
+    knots = np.linspace(t_min, t_max, num_knots)
+    knots = np.hstack((np.ones(spline_order) * t_min, 
 						knots,
-						np.ones(spline_order) * x_range[1]))
-    return construct_b_spline_basis(
-      	spline_order, knots, dx, add_constant_basis, show_plot)
+						np.ones(spline_order) * t_max))
+    basis_matrix = construct_b_spline_basis_arbitrary_knots(
+      	spline_order, knots, dt, add_constant_basis, verbose)
+
+    return basis_matrix
 
 
 class SmoothingSpline(object):
