@@ -21,6 +21,56 @@ import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
+def conv_flip(raw_input, kernel):
+    """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
+
+    Args:
+        spike (1d vector): spike trains of a single trial
+        kernel (2d vector): a (nt, nbasis) matrix, which contains multiple basis
+
+    Returns:
+        X [type]: [description]
+    """
+    raw_input = np.flipud(raw_input)
+    nbasis = kernel.shape[1]
+    X = np.zeros((raw_input.shape[0],nbasis))
+    for ibasis in range(nbasis):
+        X[:,ibasis] = conv_single(raw_input, kernel[:,ibasis])
+    return np.flipud(X)
+
+def conv(raw_input, kernel):
+    """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
+
+    Args:
+        spike (1d vector): spike trains of a single trial
+        kernel (2d vector): a (nt, nbasis) matrix, which contains multiple basis
+
+    Returns:
+        X [type]: [description]
+    """
+    nbasis = kernel.shape[1]
+    X = np.zeros((raw_input.shape[0],nbasis))
+    for ibasis in range(nbasis):
+        X[:,ibasis] = conv_single(raw_input, kernel[:,ibasis])
+    return X
+
+def conv_single(raw_input, kernel):
+    """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
+
+    Args:
+        spike (1d vector): spike trains of a single trial
+        kernel (1d vector): one basis
+
+    Returns:
+        [type]: [description]
+    """    
+    kernel = np.hstack((np.array([0]), kernel))
+    nn = len(raw_input) + len(kernel) - 1
+    G = ifft(fft(raw_input,nn)*fft(kernel,nn))
+    G = G[0:len(raw_input)].real
+    G[np.abs(G)<1e-13] = 0
+    return G
+
 def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, verbose=False):
     """ Generating raised cosine basis
 
@@ -54,23 +104,6 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, v
         plt.plot(ihbasis, '-')
         plt.show()
     return ihbasis
-
-def conv(sp, kernel):
-    """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
-
-    Args:
-        sp (numpy vector): spike trains of a single trial
-        kernel (numpy vector): a basis that composes 
-
-    Returns:
-        [type]: [description]
-    """    
-    kernel = np.hstack((np.array([0]), kernel))
-    nn = len(sp) + len(kernel) - 1
-    G = ifft(fft(sp,nn)*fft(kernel,nn))
-    G = G[0:len(sp)].real
-    G[np.abs(G)<1e-13] = 0
-    return G
 
 def make_spline(start=0, end=1e3, dt=1, num=10, verbose=False):
     from bspline import Bspline
@@ -168,88 +201,50 @@ def generate_spike_train(lmbd, random_seed=None):
         spike_train[t] = num_spikes
     return spike_train
 
+def spike_trains_neg_log_likelihood(log_lmbd, spike_trains):
+    """Calculates the log-likelihood of a spike train given log firing rate.
+
+    When it calculates the log_likelihood funciton, it assumes that it is a
+    function of lambda instead of spikes. So it drops out the terms that are not
+    related to the lambda, which is the y! (spikes factorial) term.
+
+    Args:
+        log_lmbd: The format can be in two ways.
+                timebins 1D array.
+                trials x timebins matrix. Different trials have differnet intensity.
+                        In this case, `spike_trains` and `log_lmbd` have matching rows.
+        spike_trains: Trials x timebins matrix.
+    """
+    num_trials, num_bins = spike_trains.shape
+
+    log_lmbd = np.array(log_lmbd)
+    if len(log_lmbd.shape) == 2:    # Trialwise intensity function.
+        x, num_bins_log_lmbd = log_lmbd.shape
+        if x != num_trials:
+            print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
+            print('spikes.shape:', spikes.shape)
+            raise ValueError('Number of trials does not match intensity size.')
+        if num_bins != num_bins_log_lmbd:
+            print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
+            print('spikes.shape:', spikes.shape)
+            raise ValueError('The length of log_lmbd should be equal to spikes.')
+
+        # Equivalent to row wise dot product then take the sum.
+        nll = - np.sum(spike_trains * log_lmbd)
+        nll += np.exp(log_lmbd).sum()
+        return nll
+
+    elif len(log_lmbd.shape) == 1:    # Single intensity for all trials.
+        num_bins_log_lmbd = len(log_lmbd)
+        if num_bins != num_bins_log_lmbd:
+            print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
+            print('spikes.shape:', spikes.shape)
+            raise ValueError('The length of log_lmbd should be equal to spikes.')
+        nll = - np.dot(spike_trains.sum(axis=0), log_lmbd)
+        nll += np.exp(log_lmbd).sum() * num_trials
+        return nll
 
 class SmoothingSpline(object):
-
-    @classmethod
-    def create_sine_wave(
-            cls,
-            time_line,
-            frequency,
-            show_figure=False):
-        """Create a sine wave."""
-        period_time_line = time_line * frequency * 2 * np.pi
-        y = np.sin(period_time_line)
-        if show_figure:
-            plt.figure(figsize=(7, 3))
-            plt.plot(time_line, y, 's', markersize=0.5)
-            plt.show()
-        return y
-
-    @classmethod
-
-
-    @classmethod
-    def generate_spike_trains(
-            cls,
-            lmbd,
-            num_trials,
-            random_seed=None):
-        """Generates multiple spike trains."""
-        if random_seed:
-            np.random.seed(random_seed)
-
-        spike_trains = np.zeros((num_trials, len(lmbd)))
-        for t in range(num_trials):
-            spike_trains[t] = cls.generate_spike_train(lmbd)
-        return spike_trains
-
-    @classmethod
-    def spike_trains_neg_log_likelihood(
-            cls,
-            log_lmbd,
-            spike_trains):
-        """Calculates the log-likelihood of a spike train given log firing rate.
-
-        When it calculates the log_likelihood funciton, it assumes that it is a
-        function of lambda instead of spikes. So it drops out the terms that are not
-        related to the lambda, which is the y! (spikes factorial) term.
-
-        Args:
-            log_lmbd: The format can be in two ways.
-                    timebins 1D array.
-                    trials x timebins matrix. Different trials have differnet intensity.
-                            In this case, `spike_trains` and `log_lmbd` have matching rows.
-            spike_trains: Trials x timebins matrix.
-        """
-        num_trials, num_bins = spike_trains.shape
-
-        log_lmbd = np.array(log_lmbd)
-        if len(log_lmbd.shape) == 2:    # Trialwise intensity function.
-            x, num_bins_log_lmbd = log_lmbd.shape
-            if x != num_trials:
-                print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
-                print('spikes.shape:', spikes.shape)
-                raise ValueError('Number of trials does not match intensity size.')
-            if num_bins != num_bins_log_lmbd:
-                print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
-                print('spikes.shape:', spikes.shape)
-                raise ValueError('The length of log_lmbd should be equal to spikes.')
-
-            # Equivalent to row wise dot product then take the sum.
-            nll = - np.sum(spike_trains * log_lmbd)
-            nll += np.exp(log_lmbd).sum()
-            return nll
-
-        elif len(log_lmbd.shape) == 1:    # Single intensity for all trials.
-            num_bins_log_lmbd = len(log_lmbd)
-            if num_bins != num_bins_log_lmbd:
-                print('log_lmbda_hat.shape:', log_lmbda_hat.shape)
-                print('spikes.shape:', spikes.shape)
-                raise ValueError('The length of log_lmbd should be equal to spikes.')
-            nll = - np.dot(spike_trains.sum(axis=0), log_lmbd)
-            nll += np.exp(log_lmbd).sum() * num_trials
-            return nll
 
     @classmethod
     def poisson_regression(
@@ -257,7 +252,7 @@ class SmoothingSpline(object):
             spikes,
             basis,
             max_num_iterations=100):
-        """Fit the inhomogeneous pont process using basis fit.
+        """Fit the inhomogeneous point process using basis fit.
 
         The beta is fitted using Newton's method.
 
@@ -366,7 +361,6 @@ class SmoothingSpline(object):
             verbose=False):
         """Builds spline basis and smoothing penalty matrix."""
         basis, _ = cls.bspline_basis(
-                spline_order=4,
                 knots=knots,
                 knots_range=[time_line[0], time_line[-1]],
                 sample_points=time_line,
@@ -378,7 +372,6 @@ class SmoothingSpline(object):
                 time_line[0], time_line[-1],
                 int((time_line[-1] - time_line[0]) / dt) + 1)
         basis_2dev, _ = cls.bspline_basis(
-                spline_order=4,
                 knots=knots,
                 knots_range=[time_line[0], time_line[-1]],
                 sample_points=riemann_integral_t,
@@ -467,7 +460,7 @@ class SmoothingSpline(object):
 
         # beta = np.random.rand(num_basis, 1) - 5
         if beta_initial is None:
-            beta = np.ones((num_basis, 1)) * 0
+            beta = np.zeros((num_basis, 1)) * 0
         else:
             beta = beta_initial
 
