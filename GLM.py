@@ -145,88 +145,31 @@ def make_b_spline_basis(
     knots = np.hstack((np.ones(spline_order) * t_min, 
 						knots,
 						np.ones(spline_order) * t_max))
-    basis_matrix = construct_b_spline_basis_arbitrary_knots(
+    basis_matrix = make_b_spline_basis_arbitrary_knots(
       	spline_order, knots, dt, add_constant_basis, verbose)
 
     return basis_matrix
 
+def generate_spike_train(lmbd, random_seed=None):
+    """Generate one trial of spike train using firing rate lamdba.
+
+    Args:
+        lmbd: The firing rate.
+
+    Returns:
+        One spike train.
+    """
+    if random_seed:
+        np.random.seed(random_seed)
+
+    spike_train = np.zeros(len(lmbd))
+    for t in range(len(lmbd)):
+        num_spikes = np.random.poisson(lmbd[t])
+        spike_train[t] = num_spikes
+    return spike_train
+
 
 class SmoothingSpline(object):
-
-    # def __init__(self, session):
-    #     self.session = session
-    #     self.matlab_engine = None
-
-    @classmethod
-    def bspline_basis(
-            cls,
-            spline_order,
-            knots,
-            sample_points=0.001,
-            derivative_ord=0,
-            knots_range=None,
-            show_plot=False):
-        """Creates B-spline basis.
-
-        Details see Hastie Tibshirani Friedman 2009 Springer 
-        - The elements of statistical learning p. 189.
-
-        Usage: If `knots_range` is not defined, then the boundary will be taken
-                using first and end element of `knots`. If `knots_range` conflicts with
-                `knots`, then the knot will be handled.
-
-        Args:
-            spline_order: cubic spline order is 4.
-            knots: Cab be either a scalar or an array.
-            sample_points: Cab be either a scalar or an array.
-        """
-        x_list=[0, 0, spline_order - 1]
-
-        # Evenly distributed knots.
-        if np.isscalar(knots):
-            knots = np.linspace(
-                    knots_range[0], knots_range[1], knots)
-
-        if knots_range is None:
-            knots_range = [knots[0], knots[-1]]
-            interior_knots = knots[1:-1]
-        else:
-            # Handle the repeated boundaries.
-            interior_knots = knots
-            if knots_range[0] == interior_knots[0]:
-                interior_knots = interior_knots[1:]
-            if knots_range[-1] == interior_knots[-1]:
-                interior_knots = interior_knots[:-1]
-
-        num_basis = len(interior_knots) + spline_order
-
-        # Augment the boundary knots.
-        x_list[0] = np.hstack(([knots_range[0]] * spline_order,
-                                                     interior_knots,
-                                                     [knots_range[-1]] * spline_order))
-
-        if np.isscalar(sample_points):
-            dt = sample_points
-            sample_points = np.linspace(knots_range[0], knots_range[-1],
-                                                                    int( np.round(knots_range[-1]/dt)) + 1)
-
-        basis = np.zeros((len(sample_points), num_basis))
-        for i in range(num_basis):
-            vec = np.zeros(num_basis)
-            vec[i] = 1.0 
-            x_list[1] = vec.tolist()
-            x_i = scipy.interpolate.splev(sample_points, x_list, der=derivative_ord)
-            basis[:,i] = x_i
-
-        if show_plot:
-            plt.figure()
-            plt.plot(sample_points, basis)
-            plt.plot(interior_knots, np.zeros(len(interior_knots)), 'rx')
-            plt.title('Basis splines')
-            plt.xlabel('Time [sec]')
-            plt.show()
-
-        return basis, sample_points
 
     @classmethod
     def create_sine_wave(
@@ -244,26 +187,7 @@ class SmoothingSpline(object):
         return y
 
     @classmethod
-    def generate_spike_train(
-            cls,
-            lmbd,
-            random_seed=None):
-        """Generate one trial of spike train using firing rate lamdba.
 
-        Args:
-            lmbd: The firing rate.
-
-        Returns:
-            One spike train.
-        """
-        if random_seed:
-            np.random.seed(random_seed)
-
-        spike_train = np.zeros(len(lmbd))
-        for t in range(len(lmbd)):
-            num_spikes = np.random.poisson(lmbd[t])
-            spike_train[t] = num_spikes
-        return spike_train
 
     @classmethod
     def generate_spike_trains(
