@@ -21,7 +21,7 @@ import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
-def conv_flip(raw_input, kernel):
+def conv_flip(raw_input, kernel, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
     Args:
@@ -33,28 +33,30 @@ def conv_flip(raw_input, kernel):
     """
     raw_input = np.flipud(raw_input)
     nbasis = kernel.shape[1]
-    X = np.zeros((raw_input.shape[0],nbasis))
-    for ibasis in range(nbasis):
-        X[:,ibasis] = conv_single(raw_input, kernel[:,ibasis])
-    return np.flipud(X)
+    return np.flipud(conv(raw_input, kernel, enforce_causality=enforce_causality))
 
-def conv(raw_input, kernel):
+def conv(raw_input, kernel, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
     Args:
-        spike (1d vector): spike trains of a single trial
+        spike (1d vector): spike trains of multiple trials
         kernel (2d vector): a (nt, nbasis) matrix, which contains multiple basis
 
     Returns:
         X [type]: [description]
     """
+    if kernel.ndim == 1:
+        kernel = kernel[:,np.newaxis]
+    if raw_input.ndim == 1:
+        raw_input = raw_input[:,np.newaxis]
     nbasis = kernel.shape[1]
-    X = np.zeros((raw_input.shape[0],nbasis))
+    nt, ntrial = raw_input.shape
+    X = np.zeros((nt*ntrial,nbasis))
     for ibasis in range(nbasis):
-        X[:,ibasis] = conv_single(raw_input, kernel[:,ibasis])
+        X[:,ibasis] = conv_multi_trial(raw_input, kernel[:,ibasis], merge_trial=True, enforce_causality=enforce_causality)
     return X
 
-def conv_single(raw_input, kernel):
+def conv_multi_trial(raw_input, kernel, enforce_causality=True, merge_trial=False):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
     Args:
@@ -63,13 +65,39 @@ def conv_single(raw_input, kernel):
 
     Returns:
         [type]: [description]
-    """    
-    kernel = np.hstack((np.array([0]), kernel))
-    nn = len(raw_input) + len(kernel) - 1
-    G = ifft(fft(raw_input,nn)*fft(kernel,nn))
+    """
+    if raw_input.ndim == 1:
+        raw_input = raw_input[:,np.newaxis]
+    nt, ntrial = raw_input.shape
+    if enforce_causality:
+        kernel = np.hstack((np.array([0]), kernel))
+    nn = nt + len(kernel) - 1
+    G = ifft(fft(raw_input,nn,axis=0)*fft(kernel,nn)[:,np.newaxis],axis=0)
     G = G[0:len(raw_input)].real
-    G[np.abs(G)<1e-13] = 0
+    G[np.abs(G)<1e-10] = 0
+    if merge_trial:
+        G = G.flatten('F')
     return G
+
+def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=True, apply_trial=None):
+    basis = make_b_spline_basis(
+        t_min=start, 
+        t_max=end, 
+        dt=dt, 
+        num_basis=num, 
+        add_constant_basis=add_constant_basis, 
+        verbose=False)
+    if basis.ndim == 1:
+        basis = basis[:,np.newaxis]
+    nt = basis.shape[0]
+    if apply_trial is None:
+        baseline = np.matlib.repmat(basis, ntrial, 1)
+    else:
+        baseline = np.matlib.repmat(np.zeros(basis.shape), ntrial, 1)
+        for i in range(ntrial):
+            if apply_trial[i]:
+                baseline[(i*nt):(i*nt+nt)] = basis
+    return baseline
 
 def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, verbose=False):
     """ Generating raised cosine basis
@@ -105,24 +133,48 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, v
         plt.show()
     return ihbasis
 
-def make_spline(start=0, end=1e3, dt=1, num=10, verbose=False):
-    from bspline import Bspline
-    num = num-1
-    knot_vector = np.hstack((np.array([start,start]), np.linspace(start,end,num), np.array([end,end])))
-    basis = Bspline(knot_vector,2)
+# def make_spline(start=0, end=1e3, dt=1, num=10, verbose=False):
+#     from bspline import Bspline
+#     num = num-1
+#     knot_vector = np.hstack((np.array([start,start]), np.linspace(start,end,num), np.array([end,end])))
+#     basis = Bspline(knot_vector,2)
     
-    x_min = np.min(basis.knot_vector)
-    x_max = np.max(basis.knot_vector)
-    x = np.arange(x_min, x_max+dt, dt)
-    N = np.array([basis(i) for i in x])
-    N = N[0:-1, :]
-    max_scale = np.max(N,axis=0)
-    N = N/max_scale
-    if verbose:
-        plt.figure()
-        plt.plot(N, '-')
-        plt.show()
-    return N
+#     x_min = np.min(basis.knot_vector)
+#     x_max = np.max(basis.knot_vector)
+#     x = np.arange(x_min, x_max+dt, dt)
+#     N = np.array([basis(i) for i in x])
+#     N = N[0:-1, :]
+#     max_scale = np.max(N,axis=0)
+#     N = N/max_scale
+#     if verbose:
+#         plt.figure()
+#         plt.plot(N, '-')
+#         plt.show()
+#     return N
+
+def make_b_spline_basis(
+    num_basis=10,
+    t_max=1000,
+    t_min=0,
+    add_constant_basis=False,
+    dt=1,
+    spline_order=2,
+    verbose=False):
+    """Constructs B-spline basis with knots equal distance.
+
+    Args:
+        t_range: [left_end, right_end].
+    """
+    # construct_b_spline_basis
+    num_knots = num_basis-spline_order+1
+    knots = np.linspace(t_min, t_max, num_knots)
+    knots = np.hstack((np.ones(spline_order) * t_min, 
+						knots,
+						np.ones(spline_order) * t_max))
+    basis_matrix = make_b_spline_basis_arbitrary_knots(
+      	spline_order, knots, dt, add_constant_basis, verbose)
+
+    return basis_matrix
 
 def make_b_spline_basis_arbitrary_knots(
         spline_order,
@@ -133,7 +185,7 @@ def make_b_spline_basis_arbitrary_knots(
     """Constructs B-spline basis."""
 
     num_basis = len(knots) - spline_order - 1
-    num_rows = int(np.round((knots[-1] - knots[0]) / dt)) + 1
+    num_rows = int(np.round((knots[-1] - knots[0]) / dt))
     t = np.linspace(knots[0], knots[-1], num_rows)
     basis_matrix = np.zeros((len(t), num_basis))
     interpolate_token=[0, 0, spline_order]
@@ -156,30 +208,6 @@ def make_b_spline_basis_arbitrary_knots(
         plt.xlabel('x')
         plt.ylabel('y')
         plt.show()
-
-    return basis_matrix
-
-def make_b_spline_basis(
-    num_basis=10,
-    t_max=1000,
-    t_min=0,
-    add_constant_basis=True,
-    dt=1,
-    spline_order=2,
-    verbose=False):
-    """Constructs B-spline basis with knots equal distance.
-
-    Args:
-        t_range: [left_end, right_end].
-    """
-    # construct_b_spline_basis
-    num_knots = num_basis-spline_order+1
-    knots = np.linspace(t_min, t_max, num_knots)
-    knots = np.hstack((np.ones(spline_order) * t_min, 
-						knots,
-						np.ones(spline_order) * t_max))
-    basis_matrix = make_b_spline_basis_arbitrary_knots(
-      	spline_order, knots, dt, add_constant_basis, verbose)
 
     return basis_matrix
 

@@ -16,8 +16,7 @@ import utility_functions as utils
 and simulation. """
 
 class LFP:
-    def remove_padding(self, padding_time):
-        npadding = int(padding_time*self.fps)
+    def remove_padding_single(self, npadding):
         self.lfp = self.lfp[:,npadding:-npadding,:]
 
     def get_power_phase(self, padding_time, lowcut=20, highcut=35):
@@ -69,9 +68,12 @@ class Allen_LFP(LFP):
 class Allen_dataset:
     """ For drifting gratings, there are 30 unknown trials, 15*5*8=600 trials for 8 directions, 5 temporal frequencies, 
     15 iid trials each conditions. """
+    # presentation_table is the center of trial info
     def __init__(self, **kwargs):
+
         self.source = "Allen"
         self.session_id = kwargs.pop('session_id', 791319847)
+        self.selected_probes = kwargs.pop('selected_probes', ['probeC'])
         # self.probe_id = kwargs.pop('probe_id', 805008600)
         self.stimulus_name = kwargs.pop('stimulus_name',
                                         'drifting_gratings_contrast')
@@ -79,17 +81,17 @@ class Allen_dataset:
         self.temporal_frequency = kwargs.pop('temporal_frequency', None)
         self.contrast = kwargs.pop('contrast', None)
         self.stimulus_condition_id = kwargs.pop('stimulus_condition_id', None)
-        self.start_time = kwargs.pop('start_time', -0.5)
-        self.end_time = kwargs.pop('end_time', 0)
+        self.start_time = kwargs.pop('start_time', 0)
+        self.end_time = kwargs.pop('end_time', 0.4)
+        self.padding = kwargs.pop('padding', 0.1)
         self.fps = kwargs.pop('fps', 1e3)
-        self.selected_probe = kwargs.pop('selected_probe', ['probeC'])
-        self.selected_probe = kwargs.pop('selected_probe', self.selected_probe)
-        assert type(self.selected_probe) in [str,list], "\"probe\" has to be either str or list!"
-        if self.selected_probe=='all':
-            self.selected_probe = ['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']
-        if type(self.selected_probe) == str:
-            self.selected_probe = [self.selected_probe]
-        assert set(self.selected_probe).issubset(['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']) 
+        
+        assert type(self.selected_probes) in [str,list], "\"probe\" has to be either str or list!"
+        if self.selected_probes=='all':
+            self.selected_probes = ['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']
+        if type(self.selected_probes) == str:
+            self.selected_probes = [self.selected_probes]
+        assert set(self.selected_probes).issubset(['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']) 
         
         from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
         if sys.platform == 'linux':
@@ -119,6 +121,10 @@ class Allen_dataset:
         self.presentation_times = self.presentation_table.start_time.values
         self.presentation_ids = self.presentation_table.index.values
         self.probes = self._session.probes
+        self.ntrial = len(self.presentation_ids)
+        self.time_line = np.arange(self.start_time,self.end_time, 1/self.fps)
+        self.nt = len(self.time_line)
+
 
     def get_trial_metric_per_unit_per_trial(
         self, 
@@ -136,20 +142,21 @@ class Allen_dataset:
                     'spike_times' (a sequence of spike times)
         """
         if area == 'visual':
-            self.selected_units = session.units[
-                session.units['ecephys_structure_acronym'].isin(util.VISUAL_AREA) &
-                session.units['probe_description'].isin(self.selected_probe)]
+            self.selected_units = self._session.units[
+                self._session.units['ecephys_structure_acronym'].isin(utils.VISUAL_AREA) &
+                self._session.units['probe_description'].isin(self.selected_probes)]
         else:
-            self.selected_units = session.units[
-                session.units['probe_description'].isin(self.selected_probe)]
+            self.selected_units = self._session.units[
+                self._session.units['probe_description'].isin(self.selected_probes)]
         trial_time_window = [self.start_time, self.end_time]
         if dt is None:
             dt = 1/self.fps
-        spikes_table = self.session.trialwise_spike_times(
-                self.stimulus_presentation_ids, unit_ids, trial_time_window)
-        num_neurons = len(unit_ids)
-        num_trials = len(stimulus_presentation_ids)
-        metric_table = pd.DataFrame(index=unit_ids, columns=stimulus_presentation_ids)
+        self.unit_ids = self.selected_units.index.values
+        spikes_table = self._session.trialwise_spike_times(
+                self.presentation_ids, self.unit_ids, trial_time_window)
+        num_neurons = len(self.unit_ids)
+        num_trials = len(self.presentation_ids)
+        metric_table = pd.DataFrame(index=self.unit_ids, columns=self.presentation_ids)
         metric_table.index.name = 'units'
 
         if metric_type == 'spike_trains':
@@ -157,10 +164,10 @@ class Allen_dataset:
                     trial_time_window[0], trial_time_window[1],
                     int((trial_time_window[1] - trial_time_window[0]) / dt) + 1)
 
-        for u, unit_id in enumerate(self.selected_units):
+        for u, unit_id in enumerate(self.unit_ids):
             if verbose and (u % 40 == 0):
                 print('neuron:', u)
-            for s, stimulus_presentation_id in enumerate(stimulus_presentation_ids):
+            for s, stimulus_presentation_id in enumerate(self.presentation_ids):
                 spike_times = spikes_table[
                         (spikes_table['unit_id'] == unit_id) &
                         (spikes_table['stimulus_presentation_id'] ==
@@ -185,20 +192,33 @@ class Allen_dataset:
         # like correlation cannot be performed.
         if metric_type not in ['spike_trains', 'spike_times']:
             metric_table = metric_table.apply(pd.to_numeric, errors='coerce')
-        return metric_table
+        if metric_type == 'spike_trains':
+            self.spike_train = metric_table
+        if metric_type == 'spike_times':
+            self.spike_times = metric_table
 
     def get_running(self, method="Pillow"):
-        speed = self._session.running_speed
-        speed['mean_time'] = (speed['start_time']+speed['end_time'])/2
+        running_speed = self._session.running_speed
+        running_speed['mean_time'] = (running_speed['start_time']+running_speed['end_time'])/2
+        running_speed_toarray_temp = running_speed.set_index(['mean_time'])
+        self.running_speed_xarray = running_speed_toarray_temp['velocity'].to_xarray()
+        # self.running_speed_xarray = self.running_speed_xarray.set_coords(('mean_time'))
+
         self.mean_speed = np.zeros(self.ntrial)
         self.min_speed = np.zeros(self.ntrial)
         self.max_speed = np.zeros(self.ntrial)
+        self.speed = np.zeros((self.nt, self.ntrial))
+        trial_window = np.arange(self.start_time,self.end_time, 1/self.fps)
+        
         for i in range(self.ntrial):
-            speed_temp = speed[np.logical_and(speed['mean_time']<self._presentation_times[i]+self.end_time , 
-                                self._presentation_times[i]+self.start_time<speed['mean_time']).values]['velocity'].values
+            speed_temp = running_speed[np.logical_and(running_speed['mean_time']<self.presentation_times[i]+self.end_time , 
+                                self.presentation_times[i]+self.start_time<running_speed['mean_time']).values]['velocity'].values
             self.mean_speed[i] = speed_temp.mean()
             self.min_speed[i] = speed_temp.min()
             self.max_speed[i] = speed_temp.max()
+
+            time_selection = trial_window + self.presentation_times[i]
+            self.speed[:,i] = self.running_speed_xarray.sel(mean_time = time_selection, method='nearest')
         if method=="Pillow":
             self.running_trial_index = np.logical_and( self.mean_speed >= 3 , self.min_speed >= 0.5 )
             self.stationary_trial_index = np.logical_and( self.mean_speed < 0.5 , self.max_speed < 3 )
@@ -208,16 +228,15 @@ class Allen_dataset:
 
     def get_lfp(self, **kwargs):
 
-        for probe_letter in self.probe:
-            probe_name = "probe" + probe_letter
+        for probe_name in self.selected_probes:
             self.lfp = {}
             temp_obj = Allen_LFP()
             probe_id = self.probes[self.probes['description']==probe_name].index[0]
             
             lfp_data = self._session.get_lfp(probe_id)
-            trial_window = np.arange(self.start_time,self.end_time, 1/self.fps)
-            time_selection = np.concatenate([trial_window + t for t in self._presentation_times])
-            inds = pd.MultiIndex.from_product((self._presentation_ids, trial_window), 
+            trial_window = np.arange(self.start_time-self.padding,self.end_time+self.padding, 1/self.fps)
+            time_selection = np.concatenate([trial_window + t for t in self.presentation_times])
+            inds = pd.MultiIndex.from_product((self.presentation_ids, trial_window), 
                                         names=('presentation_id', 'time_from_presentation_onset'))
             ds = lfp_data.sel(time = time_selection, method='nearest').to_dataset(name = 'aligned_lfp')
             ds = ds.assign(time=inds).unstack('time')
@@ -231,7 +250,8 @@ class Allen_dataset:
                 location = np.arange(0,lfp_temp.shape[0])*40.0
                 x = location
 
-            temp_obj.t = np.linspace(self.start_time,self.end_time,lfp_temp.shape[1] )[:,None]
+            # temp_obj.t = np.linspace(self.start_time,self.end_time,lfp_temp.shape[1] )[:,None]
+            temp_obj.t = trial_window
             temp_obj.x = x[:, None]
             temp_obj.channel = lfp_data["channel"].values
             try:
@@ -241,8 +261,14 @@ class Allen_dataset:
                 temp_obj.intervals_lfp = np.array([ 0, lfp_temp.shape[0]])
             temp_obj.nx, temp_obj.nt, temp_obj.ntrial, temp_obj.lfp = utils.check_and_get_size(lfp_temp)
             temp_obj.get_mean_lfp()
-            self.lfp[probe_letter] = temp_obj
-    
+            self.lfp[probe_name] = temp_obj
+
+    def remove_padding(self, padding_time):
+        npadding = int(padding_time*self.fps)
+        for key, value in self.lfp.items():
+            value = value.remove_padding_single(npadding)
+            # self.lfp[key] = value
+
     def get_spike_train_sparse(self):
         self._units_pd = self._session.units[(self._session.units.probe_id == self.probe_id)]
         self.unit_id_list = self._units_pd.index.values
@@ -255,7 +281,7 @@ class Allen_dataset:
                                                 (self._session.channels.probe_id == self.probe_id)].index.values[0] )
             spike_times = self._session.spike_times[self.unit_id_list[i]]
             self.spike_train_sparse.append([ spike_times[ np.logical_and(spike_times>t+self.start_time, spike_times<t+self.end_time) ]-t 
-                                     for t in self._presentation_times ])
+                                     for t in self.presentation_times ])
             
         self.st_channel_id_list = np.array(self.st_channel_id_list)
         
