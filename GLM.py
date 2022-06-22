@@ -21,6 +21,18 @@ import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
+class PP_GLM():
+    def __init__(self, dataset=None):
+        self.dataset = dataset
+
+    def add_effect(input, type):
+        assert type in ['homogeneous_baseline', 
+                        'inhomogeneous_baseline', 
+                        'coupling', 
+                        'twoway_coupling', 
+                        'circular', 
+                        'identical']
+
 def conv_flip(raw_input, kernel, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
