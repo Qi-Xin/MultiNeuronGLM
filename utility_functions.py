@@ -122,6 +122,7 @@ probeF = RL). However, the targeting is not always accurate, so the actual
 recorded region may be different.
 """
 
+PROBE_CORRESPONDING = {'probeA':'AM', 'probeB':'PM', 'probeC':'V1', 'probeD':'LM', 'probeE':'AL', 'probeF':'RL'}
 ##### Colors for plot
 # Orange.
 MIDBRAIN = ['APN', 'MB', 'AT', 'DT', 'PPT', 'NOT', 'LT', 'OP',
@@ -183,6 +184,7 @@ def color_by_brain_area(ccf_structure, colortype='normal'):
         elif colortype =='rgby':
             color = [.5, .5, .5, 1.0]
     return color
+
 
 
 ##### Spike trains
@@ -265,6 +267,11 @@ def plot_filter(basis, coef, std, label=None, color='b',exp=False):
     else:
         plt.plot(x, y.squeeze(),label=label, color=color)
         plt.fill_between(x, (y-ci), (y+ci), color=color, alpha=.3)
+
+##### PSTH plot
+def plot_PSTH():
+    pass
+
 
 ##### CCG related
 def cross_corr(

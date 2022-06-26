@@ -23,6 +23,10 @@ import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
+import statsmodels.api as sm
+
+import utility_functions as utils
+
 class PP_GLM():
     def __init__(self, 
                  dataset=None, 
@@ -54,31 +58,115 @@ class PP_GLM():
             self.membership = membership
             self.condition_ids = condition_ids
         self.effect_list = []
+        self.basis_list = []
+        self.basis_name = []
 
-    def add_effect(self, type, param=None, input=None):
-        assert type in ['homogeneous_baseline', 
+    def add_effect(self, effect_type, param=None, raw_input=None):
+        assert effect_type in ['homogeneous_baseline', 
                         'inhomogeneous_baseline', 
                         'coupling', 
                         'twoway_coupling', 
                         'circular', 
                         'identical',
-                        'history'],  "Not supported type!"
-        if type=='homogeneous_baseline':
-            new_effect = np.zeros((self.nt*self.ntrial,1))
-            self.effect_list.append(new_effect)
-        elif type=='inhomogeneous_baseline':
-            new_effect = inhomo_baseline(ntrial=self.ntrial, 
+                        'history'],  "Not supported effect_type!"
+        if effect_type == 'homogeneous_baseline':
+            X_baseline = np.zeros((self.nt*self.ntrial,1))
+            self.effect_list.append(X_baseline)
+            self.basis_list.append(X_baseline[0:self.nt,:])
+            self.basis_name.append(effect_type)
+            
+        elif effect_type == 'inhomogeneous_baseline':
+            X_baseline = inhomo_baseline(ntrial=self.ntrial, 
                                 start=0,
                                 end=self.nt,
                                 dt=1, 
-                                num=param['num'])
-            self.effect_list.append(new_effect)
-
+                                num=param['num'],
+                                add_constant_basis=param['add_constant_basis'], 
+                                apply_trial=param['apply_trial'])
+            self.effect_list.append(X_baseline)
+            self.basis_list.append(X_baseline[0:self.nt,:])
+            self.basis_name.append(effect_type)
+            
+        elif effect_type == 'coupling':
+            if type(raw_input) == str:
+                print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, raw_input, 0)
+                input_to_couple = input_to_couple[:,self.selec_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            pillow_basis = make_pillow_basis(peaks_max=param['peaks_max'], 
+                                                 num=param['num'], 
+                                                 nonlinear=param['nonlinear'], 
+                                                 verbose=False)
+            X_coupling = conv(input_to_couple, pillow_basis)
+            self.effect_list.append(X_coupling)
+            
+            self.basis_list.append(pillow_basis)
+            
+            if type(raw_input) == str:
+                self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input]+" cross-pop")
+            else:
+                self.basis_name.append(effect_type)
+            
+        elif effect_type == 'twoway_coupling':
+            if type(raw_input) == str:
+                print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, raw_input, 0)
+                input_to_couple = input_to_couple[:,self.selec_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            pillow_basis = make_pillow_basis(peaks_max=param['peaks_max'], 
+                                        num=param['num'], 
+                                        nonlinear=param['nonlinear'], 
+                                        verbose=False)
+            X_speed_pos = conv(input_to_couple, pillow_basis, enforce_causality=True)
+            X_speed_neg = conv_flip(input_to_couple, pillow_basis, enforce_causality=False)
+            X_speed_pos[:,0] += X_speed_neg[:,0]
+            X_speed_neg = X_speed_neg[:,1:]
+            self.effect_list.append(np.hstack((X_speed_pos,X_speed_neg)))
+            
+            lbasis = pillow_basis.shape[0]
+            temp = np.zeros((2*lbasis+1))
+            temp[lbasis+1] = 1
+            basis_pos = conv(temp, pill neg[:,0]
+            basis_neg = basis_neg[:,1:]
+            pillow_basis_twoway = np.hstack((basis_pos, basis_neg))
+            self.basis_list.append(pillow_basis_twoway)
+            
+            if type(raw_input) == str:
+                self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input]+" cross-pop")
+            else:
+                self.basis_name.append(effect_type)
+        
+        elif effect_type == 'circular':
+            raise ValueError("Unfinish!")
+        
+        elif effect_type == 'identical':
+            raise ValueError("Unfinish!")
+        
+        elif effect_type == 'history':
+            raise ValueError("Unfinish!")
+            
         
     def fit(self, target):
-        pass
+        if type(target) == str:
+            print(f"Assuming raw inputs are spike trains from {target}")
+            output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
+            output = output[:,self.selec_trials]
+        elif type(target) == np.ndarray:
+            output = target
+        else:
+            raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
+        response = output.flatten('F')
+        predictors = np.hstack(self.effect_list)
+        self.results = sm.GLM(response, predictors, family=sm.families.Poisson()).fit()
 
     def plot(self):
+        plt.
         pass
     
     def KSplot(self):
