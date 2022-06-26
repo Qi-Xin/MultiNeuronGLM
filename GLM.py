@@ -1,5 +1,6 @@
 """Data models."""
 import os
+from tkinter import Menu
 
 from absl import logging
 import collections
@@ -10,6 +11,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
+from pyrsistent import m
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
@@ -22,16 +24,65 @@ from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
 class PP_GLM():
-    def __init__(self, dataset=None):
-        self.dataset = dataset
+    def __init__(self, 
+                 dataset=None, 
+                 select_trials=None, 
+                 membership=None, 
+                 condition_ids=None, 
+                 nt=None, 
+                 ntrial=None):
+        """Initialize PP_GLM 
 
-    def add_effect(input, type):
+        Args:
+            dataset (Allendataset, optional): you can input a dataset for easier use. Defaults to None.
+            select_trials (array of Boole, optional): if you use dataset as input, you can specify running trials to use. Defaults to None.
+            nt (int, optional): number of time bins, if don't import dataset directly. Defaults to None.
+            ntrial (int, optional): number of trials, if don't import dataset directly. Defaults to None.
+        """
+        if dataset is None:
+            self.nt = nt
+            self.ntrial = ntrial
+            self.select_trials = np.arange(self.ntrial)
+        else:
+            self.dataset = dataset
+            self.nt = self.dataset.nt
+            if select_trials is None:
+                self.select_trials = np.arange(dataset.ntrial)
+            else:
+                self.select_trials = select_trials
+            self.ntrial = self.select_trials.sum()
+            self.membership = membership
+            self.condition_ids = condition_ids
+        self.effect_list = []
+
+    def add_effect(self, type, param=None, input=None):
         assert type in ['homogeneous_baseline', 
                         'inhomogeneous_baseline', 
                         'coupling', 
                         'twoway_coupling', 
                         'circular', 
-                        'identical']
+                        'identical',
+                        'history'],  "Not supported type!"
+        if type=='homogeneous_baseline':
+            new_effect = np.zeros((self.nt*self.ntrial,1))
+            self.effect_list.append(new_effect)
+        elif type=='inhomogeneous_baseline':
+            new_effect = inhomo_baseline(ntrial=self.ntrial, 
+                                start=0,
+                                end=self.nt,
+                                dt=1, 
+                                num=param['num'])
+            self.effect_list.append(new_effect)
+
+        
+    def fit(self, target):
+        pass
+
+    def plot(self):
+        pass
+    
+    def KSplot(self):
+        pass
 
 def conv_flip(raw_input, kernel, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
