@@ -67,8 +67,9 @@ class PP_GLM():
                         'coupling', 
                         'twoway_coupling', 
                         'circular', 
-                        'identical',
-                        'history'],  "Not supported effect_type!"
+                        'linear',
+                        'history', 
+                        'varying_linear'],  "Not supported effect_type!"
         if effect_type == 'homogeneous_baseline':
             X_baseline = np.zeros((self.nt*self.ntrial,1))
             self.effect_list.append(X_baseline)
@@ -132,7 +133,9 @@ class PP_GLM():
             lbasis = pillow_basis.shape[0]
             temp = np.zeros((2*lbasis+1))
             temp[lbasis+1] = 1
-            basis_pos = conv(temp, pill neg[:,0]
+            basis_pos = conv(temp, pillow_basis, enforce_causality=True)
+            basis_neg = conv_flip(temp, pillow_basis, enforce_causality=False)
+            basis_pos[:,0] += basis_neg[:,0]
             basis_neg = basis_neg[:,1:]
             pillow_basis_twoway = np.hstack((basis_pos, basis_neg))
             self.basis_list.append(pillow_basis_twoway)
@@ -143,34 +146,54 @@ class PP_GLM():
                 self.basis_name.append(effect_type)
         
         elif effect_type == 'circular':
+            assert type(raw_input)==np.ndarray , "Circular effects should be from LFP phase!" 
             raise ValueError("Unfinish!")
         
-        elif effect_type == 'identical':
-            raise ValueError("Unfinish!")
+        elif effect_type == 'linear':
+            assert type(raw_input)==np.ndarray , "Circular effects should be from instantaneous speed!" 
+            
         
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
-            
+
+        elif effect_type == 'varying_linear':
+            raise ValueError("Unfinish!")
         
     def fit(self, target):
         if type(target) == str:
             print(f"Assuming raw inputs are spike trains from {target}")
-            output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
-            output = output[:,self.selec_trials]
+            self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
+            self.output = self.output[:,self.selec_trials]
         elif type(target) == np.ndarray:
-            output = target
+            self.output = target
         else:
             raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
-        response = output.flatten('F')
-        predictors = np.hstack(self.effect_list)
-        self.results = sm.GLM(response, predictors, family=sm.families.Poisson()).fit()
+        self.response = self.output.flatten('F')
+        self.predictors = np.hstack(self.effect_list)
+        self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial))
+        self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial))
+        return self.results
+    
 
-    def plot(self):
-        plt.
-        pass
     
     def KSplot(self):
         pass
+
+def plot_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
+    start_col = 0
+    for previous_id in range(effect_id):
+        start_col += (model.effect_list[previous_id]).shape[1]
+    nbasis = (model.effect_list[effect_id]).shape[1]
+    end_col = start_col + nbasis
+    if results is None:
+        results = model.results
+    utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
+                      results.bse[start_col:end_col], label=label, color=color)
+    plt.title(title)
+    plt.legend()
+    
+
 
 def conv_flip(raw_input, kernel, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
