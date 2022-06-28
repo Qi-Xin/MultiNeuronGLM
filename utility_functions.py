@@ -10,6 +10,7 @@ import pickle
 import seaborn as sns
 import scipy.interpolate
 import copy
+import pandas as pd
 
 ##### Useful information about Allen brain areas
 
@@ -187,9 +188,14 @@ def color_by_brain_area(ccf_structure, colortype='normal'):
 
 
 ##### Smoothing
-def kernel_smoothing():
-    pass
-
+def kernel_smoothing(raw, std, window=None):
+    if window is None:
+        window = int(2*std)
+    smoothed = np.zeros_like(raw).astype(float)
+    for icol in range(raw.shape[1]):
+        hrly = pd.Series(raw[:,icol])
+        smoothed[:,icol] = hrly.rolling(window=window, win_type='gaussian', center=True).mean(std=std)
+    return smoothed
 
 ##### Spike trains
 def bin_spike_times(
@@ -517,7 +523,7 @@ def plot_networkx_graph(G):
         nx.draw(G, pos, node_color='b', width=2, edge_cmap=plt.cm.jet)
     plt.subplot(122)
     adj_mat = nx.to_numpy_matrix(G)
-    seaborn.heatmap(adj_mat)
+    sns.heatmap(adj_mat)
     plt.show()
 
 def plot_networkx_adj(G):

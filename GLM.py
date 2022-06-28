@@ -60,6 +60,9 @@ class PP_GLM():
         self.effect_list = []
         self.basis_list = []
         self.basis_name = []
+        self.effect_type_list = []
+        self.raw_input_list = []
+        self.kwargs_list = []
 
     def add_effect(self, effect_type, raw_input=None, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
@@ -70,6 +73,12 @@ class PP_GLM():
                         'linear',
                         'history', 
                         'varying_linear'],  "Not supported effect_type!"
+        
+        # record for later use
+        self.effect_type_list.append(effect_type)
+        self.raw_input_list.append(raw_input)
+        self.kwargs_list.append(kwargs)
+        
         if effect_type == 'homogeneous_baseline':
             X_baseline = np.zeros((self.nt*self.ntrial,1))
             self.effect_list.append(X_baseline)
@@ -78,10 +87,10 @@ class PP_GLM():
             
         elif effect_type == 'inhomogeneous_baseline':
             X_baseline = inhomo_baseline(ntrial=self.ntrial, 
-                                start=0,
-                                end=self.nt,
-                                dt=1, 
-                                **kwargs)
+                                        start=0,
+                                        end=self.nt,
+                                        dt=1, 
+                                        **kwargs)
             self.effect_list.append(X_baseline)
             self.basis_list.append(X_baseline[0:self.nt,:])
             self.basis_name.append(effect_type)
@@ -185,13 +194,36 @@ class PP_GLM():
         self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
         self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nlogli = spike_trains_neg_log_likelihood(self.firing_rate, self.output)
+        self.nlogli_trialwise = spike_trains_neg_log_likelihood(self.firing_rate, self.output, trial_wise=True)
         self.aic = self.predictors.shape[1] + self.nlogli
         if verbose:
             print(f"Negative log likelihood is: {self.nlogli :.2f}")
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
     
-
+    
+    def test(self, target, model_train, verbose=True):
+        if type(target) == str:
+            # print(f"Assuming output is spike trains from {target}")
+            self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
+            self.output = self.output[:,self.select_trials]
+        elif type(target) == np.ndarray:
+            self.output = target
+        else:
+            raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
+        self.response = self.output.flatten('F')
+        self.predictors = np.hstack(self.effect_list)
+        self.results = model_train.results
+        self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
+        self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
+        self.nlogli = spike_trains_neg_log_likelihood(self.firing_rate, self.output)
+        self.nlogli_trialwise = spike_trains_neg_log_likelihood(self.firing_rate, self.output, trial_wise=True)
+        self.aic = self.predictors.shape[1] + self.nlogli
+        if verbose:
+            print(f"Negative log likelihood is: {self.nlogli :.2f}")
+            print(f"aic/2 is: {self.aic :.2f}")
+        return self.nlogli
+        # model = 
     
     def KSplot(self):
         pass
@@ -443,7 +475,7 @@ def generate_spike_train(lmbd, random_seed=None):
         spike_train[t] = num_spikes
     return spike_train
 
-def spike_trains_neg_log_likelihood(log_lmbd, spike_trains):
+def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
     """Calculates the log-likelihood of a spike train given log firing rate.
 
     When it calculates the log_likelihood funciton, it assumes that it is a
@@ -472,9 +504,13 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains):
             raise ValueError('The length of log_lmbd should be equal to spikes.')
 
         # Equivalent to row wise dot product then take the sum.
-        nll = - np.sum(spike_trains * log_lmbd)
-        nll += np.exp(log_lmbd).sum()
-        return nll
+        nll = - (spike_trains * log_lmbd)
+        nll += np.exp(log_lmbd)
+        if trial_wise:
+            return nll.sum(axis=0)
+        else:
+            return nll.sum()
+        
 
     elif len(log_lmbd.shape) == 1:    # Single intensity for all trials.
         num_bins_log_lmbd = len(log_lmbd)
