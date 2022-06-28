@@ -186,6 +186,10 @@ def color_by_brain_area(ccf_structure, colortype='normal'):
     return color
 
 
+##### Smoothing
+def kernel_smoothing():
+    pass
+
 
 ##### Spike trains
 def bin_spike_times(
