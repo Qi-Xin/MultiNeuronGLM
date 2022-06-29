@@ -104,7 +104,7 @@ class PP_GLM():
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            pillow_basis = make_pillow_basis(**kwargs, verbose=False)
+            pillow_basis = make_pillow_basis(**kwargs)
             X_coupling = conv(input_to_couple, pillow_basis)
             self.effect_list.append(X_coupling)
             
@@ -124,7 +124,7 @@ class PP_GLM():
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            pillow_basis = make_pillow_basis(**kwargs, verbose=False)
+            pillow_basis = make_pillow_basis(**kwargs)
             X_speed_pos = conv(input_to_couple, pillow_basis, enforce_causality=True)
             X_speed_neg = conv_flip(input_to_couple, pillow_basis, enforce_causality=False)
             X_speed_pos[:,0] += X_speed_neg[:,0]
@@ -180,6 +180,7 @@ class PP_GLM():
 
     
     def fit(self, target, verbose=True):
+        self.target = target
         if type(target) == str:
             # print(f"Assuming output is spike trains from {target}")
             self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
@@ -202,29 +203,43 @@ class PP_GLM():
         return self.results
     
     
-    def test(self, target, model_train, verbose=True):
-        if type(target) == str:
-            # print(f"Assuming output is spike trains from {target}")
-            self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
-            self.output = self.output[:,self.select_trials]
-        elif type(target) == np.ndarray:
-            self.output = target
-        else:
-            raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
-        self.response = self.output.flatten('F')
-        self.predictors = np.hstack(self.effect_list)
-        self.results = model_train.results
-        self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
-        self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
-        self.nlogli = spike_trains_neg_log_likelihood(self.firing_rate, self.output)
-        self.nlogli_trialwise = spike_trains_neg_log_likelihood(self.firing_rate, self.output, trial_wise=True)
-        self.aic = self.predictors.shape[1] + self.nlogli
-        if verbose:
-            print(f"Negative log likelihood is: {self.nlogli :.2f}")
-            print(f"aic/2 is: {self.aic :.2f}")
-        return self.nlogli
-        # model = 
+    # def test(self, target, model_train, verbose=True):
+    #     if type(target) == str:
+    #         # print(f"Assuming output is spike trains from {target}")
+    #         self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
+    #         self.output = self.output[:,self.select_trials]
+    #     elif type(target) == np.ndarray:
+    #         self.output = target
+    #     else:
+    #         raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
+    #     self.response = self.output.flatten('F')
+    #     self.predictors = np.hstack(self.effect_list)
+    #     self.results = model_train.results
+    #     self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
+    #     self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
+    #     self.nlogli = spike_trains_neg_log_likelihood(self.firing_rate, self.output)
+    #     self.nlogli_trialwise = spike_trains_neg_log_likelihood(self.firing_rate, self.output, trial_wise=True)
+    #     self.aic = self.predictors.shape[1] + self.nlogli
+    #     if verbose:
+    #         print(f"Negative log likelihood is: {self.nlogli :.2f}")
+    #         print(f"aic/2 is: {self.aic :.2f}")
+    #     return self.nlogli
+    #     # model = 
     
+    def test(self, test_trials, verbose=False):
+        self.test_model = PP_GLM(dataset=self.dataset, 
+                           select_trials=test_trials, 
+                           membership=self.membership, 
+                           condition_ids=self.condition_ids)
+
+        for i_effect, effect_type in enumerate(self.effect_type_list):
+            raw_input = self.raw_input_list[i_effect]
+            assert type(raw_input) ==str, "Function test only support on Allen dataset. "
+            kwargs = self.kwargs_list[i_effect]
+            self.test_model.add_effect(effect_type, raw_input=raw_input, **kwargs)
+            self.test_model.fit(self.target, verbose=verbose)
+        return self.test_model.nlogli
+        
     def KSplot(self):
         pass
 

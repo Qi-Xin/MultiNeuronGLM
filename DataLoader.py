@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+"""Three data loading adapters that read or generate the same standard of LFP data from Allen insititue, Prof. Teichert, 
+and simulation. """
 
 import sys
 import numpy as np
@@ -12,8 +13,7 @@ import copy
 
 import utility_functions as utils
 
-"""Three data loading adapters that read or generate the same standard of LFP data from Allen insititue, Prof. Teichert, 
-and simulation. """
+
 
 class LFP:
     def remove_padding_single(self, npadding):
@@ -312,22 +312,23 @@ class Allen_dataset:
         return pooled_spike_train
     
     def get_fr(self):
-        import smoothing_spline
-        fit_model = smoothing_spline.SmoothingSpline()
-        time_line = np.arange(self.start_time,self.end_time,1.0/self.fps)
-        eta_smooth_tuning = 1e-10
-        f_basis, f_Omega = fit_model.construct_basis_omega(
-            time_line, knots=15, verbose=False)
+        raise ValueError ("need to be in rCSD folder! ")
+        # import smoothing_spline
+        # fit_model = smoothing_spline.SmoothingSpline()
+        # time_line = np.arange(self.start_time,self.end_time,1.0/self.fps)
+        # eta_smooth_tuning = 1e-10
+        # f_basis, f_Omega = fit_model.construct_basis_omega(
+        #     time_line, knots=15, verbose=False)
         
-        self.fr = np.zeros((self.nunit, self.nt, self.ntrial))
-        for i in range(self.nunit):
-            for trial in range(self.ntrial):
-                temp_spike_train = self.spike_train[i,:,trial]
-                # log_lambda_hat, beta = fit_model.poisson_regression(temp_spike_train[None,:], f_basis)
-                log_lambda_hat, (beta, beta_baseline, log_lambda_offset, hessian, hessian_baseline, nll) \
-                    = fit_model.poisson_regression_smoothing_spline(
-                        temp_spike_train[None,:], time_line, basis=f_basis, Omega=f_Omega, constant_fit=False)
-                self.fr[i, :, trial] = np.exp(log_lambda_hat)
+        # self.fr = np.zeros((self.nunit, self.nt, self.ntrial))
+        # for i in range(self.nunit):
+        #     for trial in range(self.ntrial):
+        #         temp_spike_train = self.spike_train[i,:,trial]
+        #         # log_lambda_hat, beta = fit_model.poisson_regression(temp_spike_train[None,:], f_basis)
+        #         log_lambda_hat, (beta, beta_baseline, log_lambda_offset, hessian, hessian_baseline, nll) \
+        #             = fit_model.poisson_regression_smoothing_spline(
+        #                 temp_spike_train[None,:], time_line, basis=f_basis, Omega=f_Omega, constant_fit=False)
+        #         self.fr[i, :, trial] = np.exp(log_lambda_hat)
 
     def get_kernel_fr(self, bandwidth=0.03):
         self.bandwidth = bandwidth
