@@ -8,18 +8,17 @@ from collections import defaultdict
 import io
 import itertools
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
-from pyrsistent import m
+# from pyrsistent import m
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
 import sklearn.model_selection
-from tqdm import tqdm
+# from tqdm import tqdm
 
 import numpy as np
-import numpy.matlib
+# import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
@@ -73,12 +72,17 @@ class PP_GLM():
                         'linear',
                         'history', 
                         'varying_linear'],  "Not supported effect_type!"
+
         
         # record for later use
         self.effect_type_list.append(effect_type)
         self.raw_input_list.append(raw_input)
         self.kwargs_list.append(kwargs)
         
+        if type(raw_input) == np.ndarray:
+            if raw_input.shape[1] > self.ntrial:
+                raw_input = raw_input[:, self.select_trials]
+            
         if effect_type == 'homogeneous_baseline':
             X_baseline = np.zeros((self.nt*self.ntrial,1))
             self.effect_list.append(X_baseline)
@@ -151,14 +155,14 @@ class PP_GLM():
             raise ValueError("Unfinish!")
         
         elif effect_type == 'linear':
-            assert type(raw_input)==np.ndarray , "Circular effects should be from instantaneous speed!" 
+            assert type(raw_input)==np.ndarray , "Linear effects should be from instantaneous speed!" 
             X_linear = raw_input.flatten('F')[:,np.newaxis]
             self.effect_list.append(X_linear)
             self.basis_list.append(np.ones((1,1)))
             self.basis_name.append(effect_type)
             
         elif effect_type == 'varying_linear':
-            assert type(raw_input)==np.ndarray , "Circular effects should be from instantaneous speed!" 
+            assert type(raw_input)==np.ndarray , "Varying_linear effects should be from instantaneous speed!" 
             coef_basis = inhomo_baseline(ntrial=1, 
                                          start=0,
                                          end=self.nt,
@@ -234,7 +238,6 @@ class PP_GLM():
 
         for i_effect, effect_type in enumerate(self.effect_type_list):
             raw_input = self.raw_input_list[i_effect]
-            assert type(raw_input) ==str, "Function test only support on Allen dataset. "
             kwargs = self.kwargs_list[i_effect]
             self.test_model.add_effect(effect_type, raw_input=raw_input, **kwargs)
             self.test_model.fit(self.target, verbose=verbose)

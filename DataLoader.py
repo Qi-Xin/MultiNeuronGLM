@@ -13,8 +13,6 @@ import copy
 
 import utility_functions as utils
 
-
-
 class LFP:
     def remove_padding_single(self, npadding):
         self.lfp = self.lfp[:,npadding:-npadding,:]
