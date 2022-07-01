@@ -267,10 +267,10 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, spike_
         return pooled_spike_times
 
 ##### Filter plot
-def plot_filter(basis, coef, std, label=None, color='b',exp=False):
+def plot_filter(basis, coef, se, label=None, color='b',exp=False):
     x = np.arange(basis.shape[0])
     y = (basis@coef[:,np.newaxis]).squeeze()
-    ci = (basis@std[:,np.newaxis]).squeeze()
+    ci = (basis@se[:,np.newaxis]).squeeze()
     if exp:
         plt.plot(x, np.exp(y.squeeze()),label=label, color=color)
         plt.fill_between(x, np.exp((y-ci)), np.exp((y+ci)), color=color, alpha=.3)

@@ -281,6 +281,9 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
                       results.bse[start_col:end_col], label=label, color=color, exp=use_exp)
     plt.title(title)
     plt.legend()
+    if model.basis_name[effect_id] == 'twoway_coupling':
+        length = int(model.basis_list[effect_id].shape[0]/2)
+        plt.xticks([0, length, length*2], [-length, 0, length])
     
 def plot_GLM_compare(model, effect_id_list=None,  results_list=None, title_list=None, label_list=None, color_list=['r','b'] ):
     if effect_id_list is None:
