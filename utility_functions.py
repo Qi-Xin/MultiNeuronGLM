@@ -276,7 +276,7 @@ def plot_filter(basis, coef, std, label=None, color='b',exp=False):
         plt.fill_between(x, np.exp((y-ci)), np.exp((y+ci)), color=color, alpha=.3)
     else:
         plt.plot(x, y.squeeze(),label=label, color=color)
-        plt.fill_between(x, (y-ci), (y+ci), color=color, alpha=.3)
+        plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
 
 ##### PSTH plot
 def plot_PSTH():

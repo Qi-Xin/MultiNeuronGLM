@@ -235,12 +235,30 @@ class PP_GLM():
                            select_trials=test_trials, 
                            membership=self.membership, 
                            condition_ids=self.condition_ids)
-
+        if type(self.target) == str:
+            # print(f"Assuming output is spike trains from {target}")
+            self.test_model.output = utils.pooling_pop(self.test_model.membership, self.test_model.condition_ids, 
+                                                       self.test_model.dataset, self.target, 0)
+            self.test_model.output = self.test_model.output[:,test_trials]
+        elif type(self.target) == np.ndarray:
+            self.test_model.output = self.target[:,test_trials]
+        else:
+            raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
         for i_effect, effect_type in enumerate(self.effect_type_list):
             raw_input = self.raw_input_list[i_effect]
             kwargs = self.kwargs_list[i_effect]
             self.test_model.add_effect(effect_type, raw_input=raw_input, **kwargs)
-            self.test_model.fit(self.target, verbose=verbose)
+
+        self.test_model.response = self.test_model.output.flatten('F')
+        self.test_model.predictors = np.hstack(self.test_model.effect_list)
+        self.test_model.results = self.results
+        self.test_model.firing_rate = (self.test_model.predictors@self.test_model.results.params).\
+            reshape((self.test_model.nt, self.test_model.ntrial), order='F')
+        self.test_model.firing_rate_ci = (self.test_model.predictors@self.test_model.results.bse).\
+            reshape((self.test_model.nt, self.test_model.ntrial), order='F')
+        self.test_model.nlogli = spike_trains_neg_log_likelihood(self.test_model.firing_rate, self.test_model.output)
+        self.test_model.nlogli_trialwise = spike_trains_neg_log_likelihood(self.test_model.firing_rate, self.test_model.output, trial_wise=True)
+        self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nlogli
         return self.test_model.nlogli
         
     def KSplot(self):
