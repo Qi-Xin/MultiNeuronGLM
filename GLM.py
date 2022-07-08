@@ -206,7 +206,21 @@ class PP_GLM():
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
     
-    
+    def get_filter(self):
+        effect_id_list = np.arange(len(self.basis_name))
+        result_filter = []
+        for effect_id in effect_id_list:
+            start_col = 0
+            for previous_id in range(effect_id):
+                start_col += (self.effect_list[previous_id]).shape[1]
+            nbasis = (self.effect_list[effect_id]).shape[1]
+            end_col = start_col + nbasis
+            basis = self.basis_list[effect_id]
+            coef = self.results.params[start_col:end_col]
+            y = (basis@coef[:,np.newaxis]).squeeze()
+            result_filter.append(y)
+        return result_filter
+            
     # def test(self, target, model_train, verbose=True):
     #     if type(target) == str:
     #         # print(f"Assuming output is spike trains from {target}")
