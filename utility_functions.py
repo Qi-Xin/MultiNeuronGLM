@@ -11,6 +11,7 @@ import seaborn as sns
 import scipy.interpolate
 import copy
 import pandas as pd
+import scipy.signal
 
 ##### Useful information about Allen brain areas
 
@@ -230,7 +231,7 @@ def bin_spike_times(
         spike_hist, _ = np.histogram(spike_times, bins)
     return spike_hist, bins[:-1]
 
-def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, spike_train=True):
+def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_all=False, spike_train=True):
     """
     'spike train' is a df. 
     """
@@ -244,11 +245,19 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, spike_
             trial = spike_train.columns[itrial]
             current_condition = condition_list.loc[trial]
             current_membership = membership[np.where(condition_ids==current_condition)[0][0]]
-            idx = (current_membership['probe']==probe_name) & (current_membership['group_id']==group_id)
+            idx = current_membership[(current_membership['probe']==probe_name) \
+                & (current_membership['group_id']==group_id)].index.values
+            if idx.sum() == 0 or use_all==True:
+                # if don't get any group information in 'membership', just use all neurons 
+                idx = dataset._session.units[
+                    dataset._session.units['ecephys_structure_acronym'].isin(VISUAL_AREA) &
+                    dataset._session.units['probe_description'].isin([probe_name])].index.values
+                # idx = dataset._session.units[dataset._session.units['probe_description']==probe_name]
             new_df =  spike_train.loc[idx]
             for iunit in range(new_df.shape[0]):
                 pooled_spike_train[:,itrial] += new_df.iloc[iunit, itrial]
         return pooled_spike_train
+    
     else:
         spike_times = dataset.spike_times
         condition_list = dataset.presentation_table['stimulus_condition_id']
@@ -277,7 +286,8 @@ def plot_filter(basis, coef, se, label=None, color='b',exp=False):
     else:
         plt.plot(x, y.squeeze(),label=label, color=color)
         plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
-
+    # print(f"peaks are:{scipy.signal.find_peaks(y)}")
+    
 ##### PSTH plot
 def plot_PSTH():
     pass

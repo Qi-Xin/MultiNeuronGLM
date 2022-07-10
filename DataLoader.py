@@ -223,7 +223,8 @@ class Allen_dataset:
         else:
             self.running_trial_index = self.mean_speed >= 1
             self.stationary_trial_index = self.mean_speed < 1
-
+        self.all_trial_index = np.full(self.ntrial, True)
+        
     def get_lfp(self, **kwargs):
 
         for probe_name in self.selected_probes:

@@ -14,6 +14,7 @@ import pandas as pd
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
+import scipy.signal
 import sklearn.model_selection
 # from tqdm import tqdm
 
@@ -23,6 +24,7 @@ from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 
 import statsmodels.api as sm
+import statsmodels.genmod.generalized_linear_model as smm
 
 import utility_functions as utils
 
@@ -63,7 +65,7 @@ class PP_GLM():
         self.raw_input_list = []
         self.kwargs_list = []
 
-    def add_effect(self, effect_type, raw_input=None, **kwargs):
+    def add_effect(self, effect_type, raw_input=None, use_all=False, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
                         'inhomogeneous_baseline', 
                         'coupling', 
@@ -102,7 +104,8 @@ class PP_GLM():
         elif effect_type == 'coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
-                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, raw_input, 0)
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
@@ -122,7 +125,8 @@ class PP_GLM():
         elif effect_type == 'twoway_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
-                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, raw_input, 0)
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
@@ -183,11 +187,12 @@ class PP_GLM():
 
 
     
-    def fit(self, target, verbose=True):
+    def fit(self, target, verbose=True, penalization=None):
         self.target = target
         if type(target) == str:
             # print(f"Assuming output is spike trains from {target}")
-            self.output = utils.pooling_pop(self.membership, self.condition_ids, self.dataset, target, 0)
+            self.output = utils.pooling_pop(self.membership, self.condition_ids, 
+                                    self.dataset, raw_input, 0, use_all=use_all)
             self.output = self.output[:,self.select_trials]
         elif type(target) == np.ndarray:
             self.output = target
@@ -195,9 +200,13 @@ class PP_GLM():
             raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
         self.response = self.output.flatten('F')
         self.predictors = np.hstack(self.effect_list)
-        self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        if penalization is None:
+            self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        else:
+            pass
+
         self.firing_rate = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
-        self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
+        # self.firing_rate_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nlogli = spike_trains_neg_log_likelihood(self.firing_rate, self.output)
         self.nlogli_trialwise = spike_trains_neg_log_likelihood(self.firing_rate, self.output, trial_wise=True)
         self.aic = self.predictors.shape[1] + self.nlogli
@@ -252,7 +261,7 @@ class PP_GLM():
         if type(self.target) == str:
             # print(f"Assuming output is spike trains from {target}")
             self.test_model.output = utils.pooling_pop(self.test_model.membership, self.test_model.condition_ids, 
-                                                       self.test_model.dataset, self.target, 0)
+                                                       self.test_model.dataset, self.target, 0, use_all=use_all)
             self.test_model.output = self.test_model.output[:,test_trials]
         elif type(self.target) == np.ndarray:
             self.test_model.output = self.target[:,test_trials]
@@ -291,13 +300,18 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
         use_exp = True
     else:
         use_exp = False
-    utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
+    try:
+        utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
                       results.bse[start_col:end_col], label=label, color=color, exp=use_exp)
+    except:
+        utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
+                np.zeros(end_col-start_col), label=label, color=color, exp=use_exp)
     plt.title(title)
     plt.legend()
     if model.basis_name[effect_id] == 'twoway_coupling':
         length = int(model.basis_list[effect_id].shape[0]/2)
         plt.xticks([0, length, length*2], [-length, 0, length])
+    
     
 def plot_GLM_compare(model, effect_id_list=None,  results_list=None, title_list=None, label_list=None, color_list=['r','b'] ):
     if effect_id_list is None:
@@ -390,9 +404,9 @@ def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis
         basis = basis[:,np.newaxis]
     nt = basis.shape[0]
     if apply_trial is None:
-        baseline = np.matlib.repmat(basis, ntrial, 1)
+        baseline = np.tile(basis, (ntrial, 1))
     else:
-        baseline = np.matlib.repmat(np.zeros(basis.shape), ntrial, 1)
+        baseline = np.tile(np.zeros(basis.shape), (ntrial, 1))
         for i in range(ntrial):
             if apply_trial[i]:
                 baseline[(i*nt):(i*nt+nt)] = basis
@@ -425,7 +439,7 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, v
     iht = np.arange(0,mxt,dt)[:,None]
     nt = len(iht)
     ff = lambda x, c, dc: (np.cos(np.maximum(-np.pi,np.minimum(np.pi, (x-c)*np.pi/dc/2)))+1)/2
-    ihbasis = ff(np.matlib.repmat(nlin(iht+nonlinear), 1, num), np.matlib.repmat(ctrs, nt, 1), db)
+    ihbasis = ff(np.tile(nlin(iht+nonlinear), (1, num)), np.tile(ctrs, (nt, 1)), db)
     if verbose:
         plt.figure()
         plt.plot(ihbasis, '-')
@@ -574,6 +588,9 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
         nll = - np.dot(spike_trains.sum(axis=0), log_lmbd)
         nll += np.exp(log_lmbd).sum() * num_trials
         return nll
+
+
+
 
 class SmoothingSpline(object):
 
