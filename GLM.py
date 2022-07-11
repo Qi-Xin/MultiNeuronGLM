@@ -187,12 +187,12 @@ class PP_GLM():
 
 
     
-    def fit(self, target, verbose=True, penalization=None):
+    def fit(self, target, use_all=False, verbose=True, penalization=None):
         self.target = target
         if type(target) == str:
             # print(f"Assuming output is spike trains from {target}")
             self.output = utils.pooling_pop(self.membership, self.condition_ids, 
-                                    self.dataset, raw_input, 0, use_all=use_all)
+                                    self.dataset, target, 0, use_all=use_all)
             self.output = self.output[:,self.select_trials]
         elif type(target) == np.ndarray:
             self.output = target
@@ -253,7 +253,7 @@ class PP_GLM():
     #     return self.nlogli
     #     # model = 
     
-    def test(self, test_trials, verbose=False):
+    def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
                            select_trials=test_trials, 
                            membership=self.membership, 
