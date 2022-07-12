@@ -215,7 +215,11 @@ class PP_GLM():
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
     
-    def get_filter(self):
+    def get_filter(self, ci=False):
+        ### say there are one inhomo baseline and three coupling filters, 
+        ### result_filter[2] contains the information for the second coupling filters
+        ### if ci==True, result_filter[2][0] is the filter, result_filter[2][1] is the ci
+        ### if ci==False, result_filter[2] is the filter
         effect_id_list = np.arange(len(self.basis_name))
         result_filter = []
         for effect_id in effect_id_list:
@@ -225,10 +229,18 @@ class PP_GLM():
             nbasis = (self.effect_list[effect_id]).shape[1]
             end_col = start_col + nbasis
             basis = self.basis_list[effect_id]
+            # estimated filter
             coef = self.results.params[start_col:end_col]
             y = (basis@coef[:,np.newaxis]).squeeze()
-            result_filter.append(y)
+            # ci
+            se = self.results.bse[start_col:end_col]
+            one_sigma_ci = (basis@se[:,np.newaxis]).squeeze()
+            if ci:
+                result_filter.append([y,one_sigma_ci])
+            else:
+                result_filter.append(y)
         return result_filter
+        
             
     # def test(self, target, model_train, verbose=True):
     #     if type(target) == str:
