@@ -16,9 +16,10 @@ from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
 import scipy.signal
 import sklearn.model_selection
-# from tqdm import tqdm
+from tqdm import tqdm
 
 import numpy as np
+import copy
 # import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
@@ -1190,3 +1191,131 @@ class SmoothingSpline(object):
         log_lambda_hat = log_lambda_hat.reshape(-1)
         return log_lambda_hat, (beta, beta_baseline, hessian, hessian_baseline, nll)
 
+
+
+def get_excursion_test(function1, function2, ROI_list):
+    stats_list = []
+    for i, ROI in enumerate(ROI_list):
+        diff = function1 - function2
+        stats_list.append( np.abs( np.sum(diff[ROI]) ) )
+    return np.max(stats_list)
+
+def get_ROI(function1, function2):
+    diff = np.abs(function1 - function2)
+    threshold = diff.max()/2
+    idx = np.where(diff >= threshold)[0]
+    return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
+
+def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_baseline):
+    print('aaaaa')
+    statistics_null = {}   # dict to return
+    ROI = {}
+    # Get permutated running and stationary index
+    fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
+    np.random.shuffle(fake_running_trial_index)  
+        # don't need to assign shuffled list, it's changed automatically. 
+    fake_stationary_trial_index = np.logical_not(fake_running_trial_index)
+    
+    running_filter_temp = {}
+    stationary_filter_temp = {}
+    print('bbbbb')
+    for i, target_probe in enumerate(probe_list):
+        print(f"in the loop: target_probe={target_probe}")
+        select_trials = fake_running_trial_index
+        model = PP_GLM(dataset=V1, 
+                           select_trials=select_trials, 
+                           membership=membership, 
+                           condition_ids=condition_ids)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline)
+        for j, input_probe in enumerate(probe_list):
+            print(f"in the input_probe loop: input_probe={input_probe}")
+            if i==j:
+                continue
+            model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
+        print(f"checkpoint1")
+        _ = model.fit(probe_list[i], verbose=False)
+        print(f"checkpoint1")
+        filter_list = model.get_filter(ci=True)
+        print(f"checkpoint1")
+        running_filter_temp[i,-1] = filter_list[0]
+        print(f"checkpoint1")
+        k = 1
+        for j, input_probe in enumerate(probe_list):
+            print(f"in the input_probe loop: input_probe={input_probe}")
+            if i==j:
+                continue
+            running_filter_temp[i,j] = filter_list[k]
+            k += 1
+
+        select_trials = fake_stationary_trial_index
+        model = PP_GLM(dataset=V1, 
+                           select_trials=select_trials, 
+                           membership=membership, 
+                           condition_ids=condition_ids)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline)
+        for j, input_probe in enumerate(probe_list):
+            print(f"in the input_probe loop: input_probe={input_probe}")
+            if i==j:
+                continue
+            model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
+        model.fit(probe_list[i], verbose=False)
+        filter_list = model.get_filter(ci=True)
+        stationary_filter_temp[i,-1] = filter_list[0]
+        k = 1
+        for j, input_probe in enumerate(probe_list):
+            print(f"in the input_probe loop: input_probe={input_probe}")
+            if i==j:
+                continue
+            stationary_filter_temp[i,j] = filter_list[k]
+            k += 1
+
+        filter_index = i,-1
+        function1 = np.exp( running_filter_temp[filter_index][0] )
+        function2 = np.exp( stationary_filter_temp[filter_index][0] )
+        if filter_index not in statistics_null.keys():
+            statistics_null[filter_index] = []
+        ROI[filter_index] = get_ROI(function1, function2)
+        statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI[filter_index]) )
+        
+        for j, input_probe in enumerate(probe_list):
+            if i==j:
+                continue
+            filter_index = i,j
+            function1 = running_filter_temp[filter_index][0]
+            function2 = stationary_filter_temp[filter_index][0]
+            if filter_index not in statistics_null.keys():
+                statistics_null[filter_index] = []
+            ROI[filter_index] = get_ROI(function1, function2)
+            statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI[filter_index]) )
+        print(f"at the end of the loop: probe={target_probe}")
+    print('ccccc')
+    print(statistics_null)
+    return statistics_null
+
+# Multiprocess version of null distribution
+
+def merge_dict(d1, d2):
+    # d1 is the mother, d2 is the one to add to d1
+    ds = [d1, d2]
+    d = {}
+    for k in d1.keys():
+        d[k] = d1[k] + d2[k]
+    return d
+
+def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline):
+    import multiprocessing
+    import os
+    # PROCESSES = os.cpu_count()-20
+    PROCESSES = 4
+
+    with multiprocessing.Pool(processes = PROCESSES) as pool:
+        results = [pool.apply_async(get_statistics_null, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
+                for i_null in [0,1]]
+        pool.close()
+        
+        statistics_null = results[0].get()
+        print("done!")
+        for result in tqdm(results[1:]):
+            statistics_null_new = result.get()
+            statistics_null = merge_dict(statistics_null, statistics_null_new)
+    return statistics_null

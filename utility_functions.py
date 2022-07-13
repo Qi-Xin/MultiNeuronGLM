@@ -829,3 +829,6 @@ def comp_eig_D (Ks , Kt , sig2n ):
     evals_s , evec_s = scipy . linalg . eigh (Ks)
     Dvec = np. repeat ( evals_s , nt) * np. tile ( evals_t , nx) + sig2n *np. ones(nx*nt)
     return evec_s , evec_t , Dvec
+
+
+
