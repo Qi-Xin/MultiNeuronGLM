@@ -10,11 +10,13 @@ import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from psycopg2 import paramstyle
 # from pyrsistent import m
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
 import scipy.signal
+from sklearn.linear_model import PoissonRegressor
 import sklearn.model_selection
 from tqdm import tqdm
 
@@ -188,7 +190,7 @@ class PP_GLM():
 
 
     
-    def fit(self, target, use_all=False, verbose=True, penalization=None):
+    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
         self.target = target
         if type(target) == str:
             # print(f"Assuming output is spike trains from {target}")
@@ -201,10 +203,11 @@ class PP_GLM():
             raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
         self.response = self.output.flatten('F')
         self.predictors = np.hstack(self.effect_list)
-        if penalization is None:
-            self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        if penalty != 0 or method=='mine':
+            self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         else:
-            pass
+            self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
 
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
         # self.log_lmbd_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
@@ -545,9 +548,14 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
         return nll
 
 
+class poisson_regression_result():
+    def __init__(self, params, bse):
+        self.params = params
+        self.bse = bse
+
 def poisson_regression(
-        X,
         Y,
+        X,
         L2_pen=1e-6,
         max_num_iterations=100, 
         tol=1e-8):
@@ -568,6 +576,8 @@ def poisson_regression(
         # The first column is the constant baseline, set the constant to mean firing rate. 
         beta[0] = np.log(Y.sum()/len(Y))
         penalty_vec[0] = 0
+    penalty_matrix = np.diag(penalty_vec.squeeze())
+    
     log_lmbda_hat = (X @ beta)
 
     nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
@@ -578,12 +588,12 @@ def poisson_regression(
         # g: search direction
         mu = np.exp(X @ beta)
         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
-        hessian = X.T @ (mu * X) + 2*L2_pen * np.diag(penalty_vec)
+        hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
         g = np.linalg.inv(hessian) @ grad 
-        print(g.shape)
         lr = 1
         ALPHA = 0.4
         BETA = 0.2
+        
         # Backtracking line search.
         while True:
             beta_tmp = beta - lr * g
@@ -610,13 +620,12 @@ def poisson_regression(
         if abs(nll - nll_old) < tol:
             break
         nll_old = nll
-    print(iter_index)
-    log_lmbda_hat = (X @ beta)
-    # print('beta: ', beta)
-    # return beta
-    return log_lmbda_hat, beta
-
-
+    
+    # Get standard error
+    mu = np.exp(X @ beta)
+    hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
+    bse = np.sqrt(np.diag(np.linalg.inv(hessian)))
+    return poisson_regression_result(beta.squeeze(), bse)
 
 
 
