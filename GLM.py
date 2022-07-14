@@ -204,11 +204,14 @@ class PP_GLM():
         self.response = self.output.flatten('F')
         self.predictors = np.hstack(self.effect_list)
         # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        print("before fit")
         if penalty != 0 or method=='mine':
+            print('start my GD')
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         else:
-            self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
-
+            pass
+            # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        print("after fit")
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
         # self.log_lmbd_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
@@ -582,14 +585,22 @@ def poisson_regression(
 
     nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
     nll_old = np.inf
-
+    print("checkpoint")
     for iter_index in range(max_num_iterations):
+        print("checkpoint0")
         # Newton's method.
         # g: search direction
         mu = np.exp(X @ beta)
         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
-        hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
+        print("checkpoint1")
+        print((X.T).shape)
+        print(((mu * X)).shape)
+        print((np.dot((X.T) , (mu * X))).shape)
+        print((((X.T) @ (mu * X))).shape)
+        hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
+        print("checkpoint2")
         g = np.linalg.inv(hessian) @ grad 
+        
         lr = 1
         ALPHA = 0.4
         BETA = 0.2
@@ -608,7 +619,7 @@ def poisson_regression(
                 # print(f"update learning_rate: {lr}")
             else:
                 break
-
+        print("checkpoint2")
         if iter_index == max_num_iterations - 1:
             print('Warning: Reaches maximum number of iterations.')
             
@@ -621,6 +632,8 @@ def poisson_regression(
             break
         nll_old = nll
     
+    
+    print("close to finish")
     # Get standard error
     mu = np.exp(X @ beta)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
@@ -660,12 +673,14 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
                            select_trials=select_trials, 
                            membership=membership, 
                            condition_ids=condition_ids)
-        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
             if i==j:
                 continue
             model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
+        print("before fit")
         model.fit(probe_list[i], verbose=False)
+        print("after fit")
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
         k = 1
@@ -680,7 +695,7 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
                            select_trials=select_trials, 
                            membership=membership, 
                            condition_ids=condition_ids)
-        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
             if i==j:
                 continue
@@ -713,6 +728,7 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
                 statistics_null[filter_index] = []
             ROI[filter_index] = get_ROI(function1, function2)
             statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI[filter_index]) )
+    print("All done!")
     return statistics_null
 
 # Multiprocess version of null distribution
