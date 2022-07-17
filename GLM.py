@@ -19,7 +19,7 @@ import scipy.signal
 from sklearn.linear_model import PoissonRegressor
 import sklearn.model_selection
 from tqdm import tqdm
-
+import sys
 import numpy as np
 import copy
 # import numpy.matlib
@@ -189,7 +189,6 @@ class PP_GLM():
             raise ValueError("Unfinish!")
 
 
-    
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
         self.target = target
         if type(target) == str:
@@ -204,14 +203,11 @@ class PP_GLM():
         self.response = self.output.flatten('F')
         self.predictors = np.hstack(self.effect_list)
         # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
-        print("before fit")
         if penalty != 0 or method=='mine':
-            print('start my GD')
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         else:
             pass
             # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
-        print("after fit")
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
         # self.log_lmbd_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
@@ -247,7 +243,32 @@ class PP_GLM():
             else:
                 result_filter.append(y)
         return result_filter
-        
+    
+    def get_filter_output(self, ci=False):
+        ### say there are one inhomo baseline and three coupling filters, 
+        ### result_output[2] contains the information for the second coupling filters
+        ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
+        ### if ci==False, result_output[2] is the filter
+        effect_id_list = np.arange(len(self.basis_name))
+        result_output = []
+        for effect_id in effect_id_list:
+            start_col = 0
+            for previous_id in range(effect_id):
+                start_col += (self.effect_list[previous_id]).shape[1]
+            nbasis = (self.effect_list[effect_id]).shape[1]
+            end_col = start_col + nbasis
+            predicters_temp = self.basis_list[effect_id]
+            # estimated filter
+            coef = self.results.params[start_col:end_col]
+            y = (predicters_temp@coef[:,np.newaxis]).squeeze()
+            # ci
+            se = self.results.bse[start_col:end_col]
+            one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+            if ci:
+                result_output.append([y,one_sigma_ci])
+            else:
+                result_output.append(y)
+        return result_output
     
     def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
@@ -297,6 +318,7 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
     else:
         use_exp = False
     try:
+        # try to get standard error from "results", if failed, just ignore standard error
         utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
                       results.bse[start_col:end_col], label=label, color=color, exp=use_exp)
     except:
@@ -307,7 +329,7 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
     if model.basis_name[effect_id] == 'twoway_coupling':
         length = int(model.basis_list[effect_id].shape[0]/2)
         plt.xticks([0, length, length*2], [-length, 0, length])
-    
+        
     
 def plot_GLM_compare(model, effect_id_list=None,  results_list=None, title_list=None, label_list=None, color_list=['r','b'] ):
     if effect_id_list is None:
@@ -388,7 +410,7 @@ def conv_multi_trial(raw_input, kernel, enforce_causality=True, merge_trial=Fals
         G = G.flatten('F')
     return G
 
-def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=True, apply_trial=None):
+def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, apply_trial=None):
     basis = make_b_spline_basis(
         t_min=start, 
         t_max=end, 
@@ -580,27 +602,17 @@ def poisson_regression(
         beta[0] = np.log(Y.sum()/len(Y))
         penalty_vec[0] = 0
     penalty_matrix = np.diag(penalty_vec.squeeze())
-    
     log_lmbda_hat = (X @ beta)
 
     nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
     nll_old = np.inf
-    print("checkpoint")
     for iter_index in range(max_num_iterations):
-        print("checkpoint0")
         # Newton's method.
         # g: search direction
         mu = np.exp(X @ beta)
         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
-        print("checkpoint1")
-        print((X.T).shape)
-        print(((mu * X)).shape)
-        print((np.dot((X.T) , (mu * X))).shape)
-        print((((X.T) @ (mu * X))).shape)
         hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
-        print("checkpoint2")
         g = np.linalg.inv(hessian) @ grad 
-        
         lr = 1
         ALPHA = 0.4
         BETA = 0.2
@@ -619,7 +631,6 @@ def poisson_regression(
                 # print(f"update learning_rate: {lr}")
             else:
                 break
-        print("checkpoint2")
         if iter_index == max_num_iterations - 1:
             print('Warning: Reaches maximum number of iterations.')
             
@@ -632,8 +643,6 @@ def poisson_regression(
             break
         nll_old = nll
     
-    
-    print("close to finish")
     # Get standard error
     mu = np.exp(X @ beta)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
@@ -657,7 +666,7 @@ def get_ROI(function1, function2):
 
 def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_baseline):
     statistics_null = {}   # dict to return
-    ROI = {}
+    ROI_null = {}
     # Get permutated running and stationary index
     fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
     np.random.shuffle(fake_running_trial_index)  
@@ -678,9 +687,7 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
             if i==j:
                 continue
             model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
-        print("before fit")
         model.fit(probe_list[i], verbose=False)
-        print("after fit")
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
         k = 1
@@ -715,8 +722,8 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
         function2 = np.exp( stationary_filter_temp[filter_index][0] )
         if filter_index not in statistics_null.keys():
             statistics_null[filter_index] = []
-        ROI[filter_index] = get_ROI(function1, function2)
-        statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI[filter_index]) )
+        ROI_null[filter_index] = get_ROI(function1, function2)
+        statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
         
         for j, input_probe in enumerate(probe_list):
             if i==j:
@@ -726,9 +733,8 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
             function2 = stationary_filter_temp[filter_index][0]
             if filter_index not in statistics_null.keys():
                 statistics_null[filter_index] = []
-            ROI[filter_index] = get_ROI(function1, function2)
-            statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI[filter_index]) )
-    print("All done!")
+            ROI_null[filter_index] = get_ROI(function1, function2)
+            statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
     return statistics_null
 
 # Multiprocess version of null distribution
@@ -742,19 +748,63 @@ def merge_dict(d1, d2):
     return d
 
 def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline):
+    """Get the distribution of test statistics (excursion test) under the null hypothesis. 
+    Null hypothesis is that trial-wise running state doesn't affect neural response. So null 
+    statistics is sample from random shuffling the running state of each trial. 
+    To avoid KiB Swap running of out memory issue, parallel processing has a limitation of total
+    tasks at the queue. The number of tasks is PARALLEL_BATCH_SIZE. 
+
+    Args:
+        n_null (int): number of samples of the null distributin
+        V1 (DataLoader.Allen_dataset): the object containing all data and experimental information
+        membership (pandas frame): IPRF result
+        condition_ids (list): IPRF result
+        probe_list (list): a list like ['probeA', 'probeC']
+        num_basis_baseline (int): number of B-spline basis for inhomogeneous baseline
+
+    Returns:
+        dict: a dict whose key-value pair denote the null statistics distributino samples of a 
+        certain filter. 
+    """
+
     import multiprocessing
     import os
-    # PROCESSES = os.cpu_count()-20
-    PROCESSES = 4
-
-    with multiprocessing.Pool(processes = PROCESSES) as pool:
-        results = [pool.apply_async(get_statistics_null, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
-                for i_null in [0,1]]
-        pool.close()
-        
-        statistics_null = results[0].get()
-        print("done!")
-        for result in tqdm(results[1:]):
-            statistics_null_new = result.get()
-            statistics_null = merge_dict(statistics_null, statistics_null_new)
+    # PROCESSES = os.cpu_count()-2
+    PROCESSES = 5
+    PARALLEL_BATCH_SIZE = 50
+    nbatch = int(np.ceil(n_null/PARALLEL_BATCH_SIZE))
+    print(f"Starting multiprocessing on {sys.platform}. \nCores={PROCESSES}. \nBatch size={PARALLEL_BATCH_SIZE}")
+    if sys.platform == 'linux':
+        with tqdm(total=n_null) as pbar:              
+            for ibatch in range(nbatch):
+                with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
+                    results = [pool.apply_async(get_statistics_null, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
+                            for i_null in np.arange(PARALLEL_BATCH_SIZE)]
+                    pool.close()
+                    if ibatch == 0:
+                        # The first batch the first return result will be the very first "statistics_null"
+                        statistics_null = results[0].get()
+                        pbar.update(1)
+                        for result in results[1:]:
+                            statistics_null_new = result.get()
+                            statistics_null = merge_dict(statistics_null, statistics_null_new)
+                            pbar.update(1)
+                    else:
+                        for result in results:
+                            statistics_null_new = result.get()
+                            statistics_null = merge_dict(statistics_null, statistics_null_new)
+                            pbar.update(1)
+                            
+    else:
+        with multiprocessing.Pool(processes = PROCESSES) as pool:
+            print(f"Starting multiprocessing on {sys.platform}. Cores={PROCESSES}")
+            results = [pool.apply_async(get_statistics_null, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
+                    for i_null in np.arange(n_null)]
+            pool.close()
+            
+            statistics_null = results[0].get()
+            print("done!")
+            for result in tqdm(results[1:]):
+                statistics_null_new = result.get()
+                statistics_null = merge_dict(statistics_null, statistics_null_new)
     return statistics_null
