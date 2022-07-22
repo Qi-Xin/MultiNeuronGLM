@@ -120,9 +120,10 @@ class Allen_dataset:
         self.presentation_ids = self.presentation_table.index.values
         self.probes = self._session.probes
         self.ntrial = len(self.presentation_ids)
-        self.time_line = np.arange(self.start_time,self.end_time, 1/self.fps)
+        self.time_line = np.arange(self.start_time, self.end_time, 1/self.fps)
+        self.time_line_padding = np.arange(self.start_time - self.padding, self.end_time, 1/self.fps)
         self.nt = len(self.time_line)
-
+        self.npadding = int(self.padding*self.fps)
 
     def get_trial_metric_per_unit_per_trial(
         self, 
@@ -146,7 +147,7 @@ class Allen_dataset:
         else:
             self.selected_units = self._session.units[
                 self._session.units['probe_description'].isin(self.selected_probes)]
-        trial_time_window = [self.start_time, self.end_time]
+        trial_time_window = [self.start_time - self.padding, self.end_time]
         if dt is None:
             dt = 1/self.fps
         self.unit_ids = self.selected_units.index.values
