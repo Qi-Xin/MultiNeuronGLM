@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from psycopg2 import paramstyle
+from regex import D
 # from pyrsistent import m
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
@@ -25,6 +26,7 @@ import copy
 # import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
+import scipy.stats
 
 import statsmodels.api as sm
 import statsmodels.genmod.generalized_linear_model as smm
@@ -223,6 +225,10 @@ class PP_GLM():
             print(f"Negative log likelihood is: {self.nll :.2f}")
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
+    
+    def KStest(verbose=False):
+        
+        pass
     
     def get_filter(self, ci=False):
         ### say there are one inhomo baseline and three coupling filters, 
