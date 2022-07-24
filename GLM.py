@@ -194,7 +194,7 @@ class PP_GLM():
             raise ValueError("Unfinish!")
 
 
-    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', remove_padding=True):
+    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
         self.target = target
         if type(target) == str:
             # print(f"Assuming output is spike trains from {target}")
@@ -205,9 +205,8 @@ class PP_GLM():
             self.output = target
         else:
             raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
-        print(self.output.shape)
-        self.output = self.output[self.npadding:, :]
-        print(self.output.shape)
+        if self.npadding is not None:
+            self.output = self.output[self.npadding:, :]
         self.response = self.output.flatten('F')
         self.predictors = np.hstack(self.effect_list)
         # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
@@ -226,9 +225,16 @@ class PP_GLM():
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
     
-    def KStest(verbose=False):
-        
-        pass
+    def deviance_test(self, verbose=False):
+        # Not really useful with tens of thousands of column
+        sat_nll = spike_trains_neg_log_likelihood( np.log(self.output+1e-6), self.output)
+        dev = 2 * (self.nll - sat_nll)
+        degree_freedom = self.predictors.shape[0] - self.predictors.shape[1]
+        pvalue = 1 -  scipy.stats.chi2.cdf(dev, degree_freedom)
+        if verbose:
+            print(sat_nll, self.nll, degree_freedom)
+            print(f"p-value for deviance test is:{pvalue}")
+        return pvalue
     
     def get_filter(self, ci=False):
         ### say there are one inhomo baseline and three coupling filters, 
@@ -312,9 +318,6 @@ class PP_GLM():
         self.test_model.nll_trialwise = spike_trains_neg_log_likelihood(self.test_model.log_lmbd, self.test_model.output, trial_wise=True)
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
-        
-    def KSplot(self):
-        pass
 
 
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
@@ -394,6 +397,7 @@ def conv(raw_input, kernel, npadding=None, enforce_causality=True):
         raw_input = raw_input[:,np.newaxis]
     nbasis = kernel.shape[1]
     nt, ntrial = raw_input.shape
+    nt = nt - npadding
     X = np.zeros((nt*ntrial,nbasis))
     for ibasis in range(nbasis):
         X[:,ibasis] = conv_multi_trial(raw_input, kernel[:,ibasis], merge_trial=True, npadding=npadding, enforce_causality=enforce_causality)

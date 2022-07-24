@@ -121,9 +121,13 @@ class Allen_dataset:
         self.probes = self._session.probes
         self.ntrial = len(self.presentation_ids)
         self.time_line = np.arange(self.start_time, self.end_time, 1/self.fps)
-        self.time_line_padding = np.arange(self.start_time - self.padding, self.end_time, 1/self.fps)
         self.nt = len(self.time_line)
-        self.npadding = int(self.padding*self.fps)
+        if self.padding is None:
+            self.npadding = None
+            self.time_line_padding = None
+        else:
+            self.npadding = int(self.padding*self.fps)
+            self.time_line_padding = np.arange(self.start_time - self.padding, self.end_time, 1/self.fps)
 
     def get_trial_metric_per_unit_per_trial(
         self, 
