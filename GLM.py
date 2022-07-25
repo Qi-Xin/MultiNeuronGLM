@@ -135,14 +135,14 @@ class PP_GLM():
                 input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
                                                     self.dataset, raw_input, 0, use_all=use_all)
                 input_to_couple = input_to_couple[:,self.select_trials]
+                input_to_couple = input_to_couple[self.npadding:, :]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            input_to_couple = input_to_couple[self.npadding:, :]
             pillow_basis = make_pillow_basis(**kwargs)
-            X_speed_pos = conv(input_to_couple, pillow_basis, enforce_causality=True)
-            X_speed_neg = conv_flip(input_to_couple, pillow_basis, enforce_causality=False)
+            X_speed_pos = conv(input_to_couple, pillow_basis, enforce_causality=True, npadding=None)
+            X_speed_neg = conv_flip(input_to_couple, pillow_basis, enforce_causality=False, npadding=None)
             X_speed_pos[:,0] += X_speed_neg[:,0]
             X_speed_neg = X_speed_neg[:,1:]
             self.effect_list.append(np.hstack((X_speed_pos,X_speed_neg)))
@@ -367,7 +367,7 @@ def plot_GLM_compare(model, effect_id_list=None,  results_list=None, title_list=
         i_effect += 1
         plt.show()
 
-def conv_flip(raw_input, kernel, enforce_causality=True):
+def conv_flip(raw_input, kernel, npadding=None, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
     Args:
@@ -379,7 +379,7 @@ def conv_flip(raw_input, kernel, enforce_causality=True):
     """
     raw_input = np.flipud(raw_input)
     nbasis = kernel.shape[1]
-    return np.flipud(conv(raw_input, kernel, enforce_causality=enforce_causality))
+    return np.flipud(conv(raw_input, kernel, npadding=npadding, enforce_causality=enforce_causality))
 
 def conv(raw_input, kernel, npadding=None, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
@@ -397,7 +397,8 @@ def conv(raw_input, kernel, npadding=None, enforce_causality=True):
         raw_input = raw_input[:,np.newaxis]
     nbasis = kernel.shape[1]
     nt, ntrial = raw_input.shape
-    nt = nt - npadding
+    if npadding is not None:
+        nt = nt - npadding
     X = np.zeros((nt*ntrial,nbasis))
     for ibasis in range(nbasis):
         X[:,ibasis] = conv_multi_trial(raw_input, kernel[:,ibasis], merge_trial=True, npadding=npadding, enforce_causality=enforce_causality)
