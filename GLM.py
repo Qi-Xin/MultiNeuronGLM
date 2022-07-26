@@ -275,13 +275,23 @@ class PP_GLM():
                 start_col += (self.effect_list[previous_id]).shape[1]
             nbasis = (self.effect_list[effect_id]).shape[1]
             end_col = start_col + nbasis
-            predicters_temp = self.basis_list[effect_id]
-            # estimated filter
+            
+            # estimated effect output
             coef = self.results.params[start_col:end_col]
-            y = (predicters_temp@coef[:,np.newaxis]).squeeze()
-            # ci
-            se = self.results.bse[start_col:end_col]
-            one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+            if self.basis_name[effect_id] == "inhomogeneous_baseline":
+                predicters_temp = self.basis_list[effect_id]
+                coef = self.results.params[start_col:end_col]
+                y = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                se = self.results.bse[start_col:end_col]
+                one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+            else:
+                predicters_temp = self.effect_list[effect_id]
+                coef = self.results.params[start_col:end_col]
+                y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
+                y = y_mat.mean(axis=1)
+                # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
+                one_sigma_ci = y_mat.std(axis=1)
             if ci:
                 result_output.append([y,one_sigma_ci])
             else:
@@ -827,3 +837,19 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                 statistics_null_new = result.get()
                 statistics_null = merge_dict(statistics_null, statistics_null_new)
     return statistics_null
+
+
+
+def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, probe_list, num_basis_baseline):
+    pass
+    # Fit six model
+    # for f in all filters:
+        # set f to all 0s
+        # for i_bt in range(n_bt):
+            # simulated a whole dataset
+            # regress and get an estimate of f, f hat
+            # calculate and record test statistics
+        # get p-value of that filter f
+        
+    # To-do: simulation; 
+    #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
