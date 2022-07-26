@@ -683,7 +683,15 @@ def get_ROI(function1, function2):
     idx = np.where(diff >= threshold)[0]
     return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
 
-def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_baseline):
+def merge_dict(d1, d2):
+    # d1 is the mother, d2 is the one to add to d1
+    ds = [d1, d2]
+    d = {}
+    for k in d1.keys():
+        d[k] = d1[k] + d2[k]
+    return d
+
+def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline):
     statistics_null = {}   # dict to return
     ROI_null = {}
     # Get permutated running and stationary index
@@ -758,14 +766,6 @@ def get_statistics_null(V1, membership, condition_ids, probe_list, num_basis_bas
 
 # Multiprocess version of null distribution
 
-def merge_dict(d1, d2):
-    # d1 is the mother, d2 is the one to add to d1
-    ds = [d1, d2]
-    d = {}
-    for k in d1.keys():
-        d[k] = d1[k] + d2[k]
-    return d
-
 def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline):
     """Get the distribution of test statistics (excursion test) under the null hypothesis. 
     Null hypothesis is that trial-wise running state doesn't affect neural response. So null 
@@ -797,7 +797,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
         with tqdm(total=n_null) as pbar:              
             for ibatch in range(nbatch):
                 with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-                    results = [pool.apply_async(get_statistics_null, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
+                    results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
                             for i_null in np.arange(PARALLEL_BATCH_SIZE)]
                     pool.close()
                     if ibatch == 0:
