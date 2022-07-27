@@ -701,7 +701,7 @@ def merge_dict(d1, d2):
         d[k] = d1[k] + d2[k]
     return d
 
-def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline):
+def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
     statistics_null = {}   # dict to return
     ROI_null = {}
     # Get permutated running and stationary index
@@ -723,7 +723,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         for j, input_probe in enumerate(probe_list):
             if i==j:
                 continue
-            model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
+            model.add_effect('coupling', probe_list[j], **coupling_filter_params)
         model.fit(probe_list[i], verbose=False)
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
@@ -743,7 +743,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         for j, input_probe in enumerate(probe_list):
             if i==j:
                 continue
-            model.add_effect('coupling', probe_list[j], peaks_max=100, num=5, nonlinear=0.3)
+            model.add_effect('coupling', probe_list[j], **coupling_filter_params)
         model.fit(probe_list[i], verbose=False)
         filter_list = model.get_filter(ci=True)
         stationary_filter_temp[i,-1] = filter_list[0]
@@ -776,7 +776,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
 
 # Multiprocess version of null distribution
 
-def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline):
+def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
     """Get the distribution of test statistics (excursion test) under the null hypothesis. 
     Null hypothesis is that trial-wise running state doesn't affect neural response. So null 
     statistics is sample from random shuffling the running state of each trial. 
@@ -807,7 +807,8 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
         with tqdm(total=n_null) as pbar:              
             for ibatch in range(nbatch):
                 with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-                    results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, num_basis_baseline)) 
+                    results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, 
+                                                                                num_basis_baseline, coupling_filter_params)) 
                             for i_null in np.arange(PARALLEL_BATCH_SIZE)]
                     pool.close()
                     if ibatch == 0:
