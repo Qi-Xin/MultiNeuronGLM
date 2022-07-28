@@ -27,6 +27,8 @@ import copy
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 import scipy.stats
+import copy
+from scipy.special import rel_entr
 
 import statsmodels.api as sm
 import statsmodels.genmod.generalized_linear_model as smm
@@ -81,7 +83,8 @@ class PP_GLM():
                         'circular', 
                         'linear',
                         'history', 
-                        'varying_linear'],  "Not supported effect_type!"
+                        'varying_linear',
+                        'dense_coupling'],  "Not supported effect_type!"
 
         # record for later use
         self.effect_type_list.append(effect_type)
@@ -128,7 +131,29 @@ class PP_GLM():
                 self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
             else:
                 self.basis_name.append(effect_type)
+                
+        elif effect_type == 'dense_coupling':
+            if type(raw_input) == str:
+                # print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
+                input_to_couple = input_to_couple[:,self.select_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            num = kwargs.pop('num',10)
+            pillow_basis = np.diag(np.ones(num))
+            X_coupling = conv(input_to_couple, pillow_basis, npadding=self.npadding)
+            self.effect_list.append(X_coupling)
             
+            self.basis_list.append(pillow_basis)
+            
+            if type(raw_input) == str:
+                self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
+            else:
+                self.basis_name.append(effect_type)
+                
         elif effect_type == 'twoway_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
@@ -298,6 +323,22 @@ class PP_GLM():
                 result_output.append(y)
         return result_output
     
+    def get_filter_contribution(self, time_range=None):
+        if time_range is None:
+            time_range = [self.dataset.start_time, self.dataset.end_time]
+        time_range = [int(time*self.dataset.fps) for time in time_range]
+        result_output = self.get_filter_output(ci=False)
+        total_output = np.vstack((result_output)).T
+        total_output = total_output.sum(axis=1)
+        total_info = get_three_measure(total_output[time_range[0]:time_range[1]], exp=True)
+        individual_info = []
+        for i, output in enumerate(result_output):
+            temp_output = copy.deepcopy(total_output)
+            temp_output = temp_output - output + np.mean(output)
+            temp_info = get_three_measure(temp_output[time_range[0]:time_range[1]], exp=True)
+            individual_info.append(total_info - temp_info)
+        return individual_info
+
     def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
                            select_trials=test_trials, 
@@ -329,6 +370,21 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
+def get_three_measure(f, exp=False):
+    if exp==False:
+        if np.any(f<=0):
+            exp = True
+            print("Setting f to exp(f) for nonnegativity!")
+    if exp:
+        f = np.exp(f)
+    pdf = f/f.sum()
+    cdf = np.cumsum(pdf)
+    pdfUniform = 1/len(pdf) * np.ones(len(pdf))
+    cdfUniform = np.cumsum(pdfUniform)
+    KL = rel_entr(pdfUniform, pdf).sum()
+    KS = np.max(np.abs(cdf-cdfUniform))
+    Wasser = np.sum(np.abs(cdf-cdfUniform))
+    return np.array([KL, KS, Wasser])
 
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
     start_col = 0
