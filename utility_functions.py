@@ -60,16 +60,15 @@ PRE: Presubiculum.
 
 
 VIS: 
-VISam: Anteromedial.
-VISpm: Posteromedial.
-VISp: Primary.
-VISl: Lateral.
-VISal: Anterolateral.
-VISrl: rostrolateral.
+VISam: Anteromedial area .
+VISpm: Posteromedial area.
+VISp: Primary visual cortex.
+VISl: Lateromedial area.
+VISal: Anterolateral area.
+VISrl: Rostrolateral area.
 VISli: Laterointermediate area.
 VISmmp: Mediomedial posterior visual area.
 VISmma: Mediomedial anterior visual area.
-
 
 TH: Thalamus.
 LGd: The dorsolateral geniculate nucleus is the main division of the lateral
