@@ -330,12 +330,12 @@ class PP_GLM():
         result_output = self.get_filter_output(ci=False)
         total_output = np.vstack((result_output)).T
         total_output = total_output.sum(axis=1)
-        total_info = get_three_measure(total_output[time_range[0]:time_range[1]], exp=True)
+        total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
         individual_info = []
         for i, output in enumerate(result_output):
             temp_output = copy.deepcopy(total_output)
             temp_output = temp_output - output + np.mean(output)
-            temp_info = get_three_measure(temp_output[time_range[0]:time_range[1]], exp=True)
+            temp_info = get_three_measure_entire_length(temp_output[time_range[0]:time_range[1]], exp=True)
             individual_info.append(total_info - temp_info)
         return individual_info
 
@@ -370,7 +370,7 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
-def get_three_measure(f, exp=False):
+def get_three_measure_entire_length(f, exp=False):
     if exp==False:
         if np.any(f<=0):
             exp = True
@@ -385,6 +385,14 @@ def get_three_measure(f, exp=False):
     KS = np.max(np.abs(cdf-cdfUniform))
     Wasser = np.sum(np.abs(cdf-cdfUniform))
     return np.array([KL, KS, Wasser])
+
+def get_measure_func(measure, f):
+    def get_measure(l, win, f=f, measure=measure):
+        r = l + win
+        if r > 500:
+            r = 500
+        return get_three_measure_entire_length(f[int(l):int(r)], exp=True)[measure]
+    return get_measure
 
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
     start_col = 0
