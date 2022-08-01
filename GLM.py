@@ -785,16 +785,12 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
                            condition_ids=condition_ids)
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
-            if i==j:
-                continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
         model.fit(probe_list[i], verbose=False)
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
-            if i==j:
-                continue
             running_filter_temp[i,j] = filter_list[k]
             k += 1
 
@@ -805,16 +801,12 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
                            condition_ids=condition_ids)
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
-            if i==j:
-                continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
         model.fit(probe_list[i], verbose=False)
         filter_list = model.get_filter(ci=True)
         stationary_filter_temp[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
-            if i==j:
-                continue
             stationary_filter_temp[i,j] = filter_list[k]
             k += 1
 
@@ -827,8 +819,6 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
         
         for j, input_probe in enumerate(probe_list):
-            if i==j:
-                continue
             filter_index = i,j
             function1 = running_filter_temp[filter_index][0]
             function2 = stationary_filter_temp[filter_index][0]
