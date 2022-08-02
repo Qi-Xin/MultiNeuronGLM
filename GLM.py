@@ -323,21 +323,36 @@ class PP_GLM():
                 result_output.append(y)
         return result_output
     
-    def get_filter_contribution(self, time_range=None):
+    def get_filter_contribution(self, time_range=None, auto_pick=None):
         if time_range is None:
             time_range = [self.dataset.start_time, self.dataset.end_time]
         time_range = [int(time*self.dataset.fps) for time in time_range]
         result_output = self.get_filter_output(ci=False)
         total_output = np.vstack((result_output)).T
         total_output = total_output.sum(axis=1)
-        total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
-        individual_info = []
-        for i, output in enumerate(result_output):
-            temp_output = copy.deepcopy(total_output)
-            temp_output = temp_output - output + np.mean(output)
-            temp_info = get_three_measure_entire_length(temp_output[time_range[0]:time_range[1]], exp=True)
-            individual_info.append(total_info - temp_info)
-        return individual_info
+        # print(total_output.shape)
+        if auto_pick is None:
+            total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
+            individual_info = []
+            for i, output in enumerate(result_output):
+                minus_one_output = copy.deepcopy(total_output)
+                minus_one_output = minus_one_output - output + np.mean(output)
+                temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
+                individual_info.append(total_info - temp_info)
+            return individual_info
+        else:
+            measure = auto_pick
+            individual_info = []
+            for i, output in enumerate(result_output):
+                minus_one_output = copy.deepcopy(total_output)
+                minus_one_output = minus_one_output - output + np.mean(output)
+                best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
+                # print(f"{i}, {best_time_range}")
+                total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
+                temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
+                individual_info.append(total_info - temp_info)
+            return individual_info
+            
 
     def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
@@ -389,10 +404,21 @@ def get_three_measure_entire_length(f, exp=False):
 def get_measure_func(measure, f):
     def get_measure(l, win, f=f, measure=measure):
         r = l + win
-        if r > 500:
-            r = 500
+        # if r > 500:
+        #     r = 500
         return get_three_measure_entire_length(f[int(l):int(r)], exp=True)[measure]
     return get_measure
+
+def get_best_time_range(total_output, minus_one_output, measure, time_range):
+    total_output_func = get_measure_func(measure, total_output)
+    minus_one_output_func = get_measure_func(measure, minus_one_output)
+    nt = time_range[1] - time_range[0]
+    kl = np.full((nt, nt), -np.inf)
+    for l in range(time_range[0], time_range[1]):
+        for r in range(l+1, time_range[1]):
+            kl[l-time_range[0], r-time_range[0]] = total_output_func(l,r-l) - minus_one_output_func(l,r-l)
+    best_l, best_r = np.where(kl==kl.max())
+    return [best_l[0]+time_range[0], best_r[0]+time_range[0]]
 
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
     start_col = 0
