@@ -55,7 +55,7 @@ class PP_GLM():
         if dataset is None:
             self.nt = nt
             self.ntrial = ntrial
-            self.select_trials = np.arange(self.ntrial)
+            self.select_trials = np.full(self.ntrial, True)
             self.npadding = npadding
         else:
             self.dataset = dataset
@@ -529,7 +529,7 @@ def conv_multi_trial(raw_input, kernel, merge_trial=False, npadding=None, enforc
         G = G.flatten('F')
     return G
 
-def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, apply_trial=None):
+def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, apply_trial=None, verbose=False):
     basis = make_b_spline_basis(
         t_min=start, 
         t_max=end, 
@@ -547,6 +547,8 @@ def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis
         for i in range(ntrial):
             if apply_trial[i]:
                 baseline[(i*nt):(i*nt+nt)] = basis
+    if verbose:
+        plt.plot(baseline)
     return baseline
 
 def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, verbose=False):
