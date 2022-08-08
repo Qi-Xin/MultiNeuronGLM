@@ -385,6 +385,9 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
+def simulate(model_list):
+    pass
+
 def get_three_measure_entire_length(f, exp=False):
     if exp==False:
         if np.any(f<=0):
