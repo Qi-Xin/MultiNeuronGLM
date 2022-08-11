@@ -245,6 +245,7 @@ class PP_GLM():
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
         self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True)
         self.aic = self.predictors.shape[1] + self.nll
+        self.filters = self.get_filter(ci=False)
         if verbose:
             print(f"Negative log likelihood is: {self.nll :.2f}")
             print(f"aic/2 is: {self.aic :.2f}")
@@ -385,9 +386,12 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
-def simulate(model_list):
-    pass
-
+def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
+    nneuron = len(model_list)
+    # Get three dimension matrix of coupling filters for better computing. 
+    # for 
+    # Start simulate one by one
+    
 def get_three_measure_entire_length(f, exp=False):
     if exp==False:
         if np.any(f<=0):

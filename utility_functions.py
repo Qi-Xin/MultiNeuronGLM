@@ -124,6 +124,7 @@ recorded region may be different.
 """
 
 PROBE_CORRESPONDING = {'probeA':'AM', 'probeB':'PM', 'probeC':'V1', 'probeD':'LM', 'probeE':'AL', 'probeF':'RL'}
+PROBE_CORRESPONDING_INVERSE = {'AM': 'probeA', 'PM': 'probeB', 'V1': 'probeC', 'LM': 'probeD', 'AL':'probeE', 'RL':'probeF'}
 ##### Colors for plot
 # Orange.
 MIDBRAIN = ['APN', 'MB', 'AT', 'DT', 'PPT', 'NOT', 'LT', 'OP',
