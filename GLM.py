@@ -1,4 +1,5 @@
 """Data models."""
+from curses import raw
 import os
 from tkinter import Menu
 
@@ -84,7 +85,9 @@ class PP_GLM():
                         'linear',
                         'history', 
                         'varying_linear',
-                        'dense_coupling'],  "Not supported effect_type!"
+                        'dense_coupling',
+                        'refractory',
+                        'trial_coef'],  "Not supported effect_type!"
 
         # record for later use
         self.effect_type_list.append(effect_type)
@@ -96,7 +99,7 @@ class PP_GLM():
                 raw_input = raw_input[:, self.select_trials]
             
         if effect_type == 'homogeneous_baseline':
-            X_baseline = np.zeros((self.nt*self.ntrial,1))
+            X_baseline = np.ones((self.nt*self.ntrial,1))
             self.effect_list.append(X_baseline)
             self.basis_list.append(X_baseline[0:self.nt,:])
             self.basis_name.append(effect_type)
@@ -153,7 +156,39 @@ class PP_GLM():
                 self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
             else:
                 self.basis_name.append(effect_type)
-                
+        
+        elif effect_type == 'refractory':
+            if type(raw_input) == str:
+                # print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
+                input_to_couple = input_to_couple[:,self.select_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            tau = kwargs.pop('tau',100)
+            refractory_spikes = np.zeros_like(input_to_couple)
+            temp = refractory_spikes[0, :]
+            for t in range(1, input_to_couple.shape[0]):
+                temp *= np.exp(-1000.0/self.dataset.fps/tau)
+                refractory_spikes[t, :] = temp
+                temp += input_to_couple[t, :]
+            
+            refractory_spikes = refractory_spikes[-self.nt:, :]
+            X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
+            self.effect_list.append(X_refractory)
+            self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
+            self.basis_name.append(effect_type)
+            
+        elif effect_type == 'trial_coef':
+            X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial))
+            for itrial in range(self.ntrial):
+                X_trial_coef[(itrial*self.nt):((itrial+1)*self.nt), itrial] = 1
+            self.effect_list.append(X_trial_coef)
+            self.basis_list.append(np.diag(np.ones(self.ntrial)))
+            self.basis_name.append(effect_type)
+
         elif effect_type == 'twoway_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
