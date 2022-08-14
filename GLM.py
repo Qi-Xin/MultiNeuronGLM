@@ -438,10 +438,10 @@ def get_three_measure_entire_length(f, exp=False):
     cdf = np.cumsum(pdf)
     pdfUniform = 1/len(pdf) * np.ones(len(pdf))
     cdfUniform = np.cumsum(pdfUniform)
-    KL = rel_entr(pdfUniform, pdf).sum()
+    KL = rel_entr(pdf, pdfUniform).sum()
     # KL = rel_entr(pdf, pdfUniform).sum()
     KS = np.max(np.abs(cdf-cdfUniform))
-    Wasser = np.sum(np.abs(cdf-cdfUniform))
+    Wasser = np.sum(np.abs(cdf-cdfUniform)*1/len(pdf))
     return np.array([KL, KS, Wasser])
 
 def get_measure_func(measure, f):
