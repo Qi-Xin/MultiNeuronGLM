@@ -272,9 +272,10 @@ class PP_GLM():
         # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         if penalty != 0 or method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
+        elif method=='logit':
+            self.results = sm.GLM(self.response, self.predictors, family=sm.families.logit()).fit()
         else:
-            pass
-            # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+            self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
         # self.log_lmbd_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
