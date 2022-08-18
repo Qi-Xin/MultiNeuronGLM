@@ -273,7 +273,11 @@ class PP_GLM():
         if penalty != 0 or method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         elif method=='logit':
-            self.results = sm.GLM(self.response, self.predictors, family=sm.families.logit()).fit()
+            success_fail = np.zeros((len(self.response), 2))
+            success_fail[:,0] = self.response
+            self.spikes_max = int(self.response.max() * 1)
+            success_fail[:,1] = self.spikes_max - self.response
+            self.results = sm.GLM(success_fail, self.predictors, family=sm.families.Binomial()).fit()
         else:
             self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
