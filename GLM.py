@@ -252,7 +252,7 @@ class PP_GLM():
         
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
-
+ 
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
         self.target = target
