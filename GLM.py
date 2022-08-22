@@ -252,7 +252,7 @@ class PP_GLM():
         
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
- 
+
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
         self.target = target
@@ -426,6 +426,66 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
+    def fit_time_warpping_baseline(self, max_iter=100,  verbose=True):
+        assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
+        self.shifts = np.zeros((self.ntrial, 2))
+        # find which Xs should be warpped
+        effect_id_list = np.arange(len(self.basis_name))
+        for effect_id in effect_id_list:
+            if self.effect_type_list[effect_id] == 'inhomogeneous_baseline'：
+                start_col = 0
+                for previous_id in range(effect_id):
+                    start_col += (self.effect_list[previous_id]).shape[1]
+                nbasis = (self.effect_list[effect_id]).shape[1]
+                end_col = start_col + nbasis
+        for iter in range(max_iter):
+            # update shifts
+            pass
+            # update coef
+            
+        #
+        pass
+    
+def linear_time_warping_single(
+    cls,
+    t,
+    f,
+    sources,
+    targets,
+    output_file=None,
+    verbose=True):
+    """Time warping function for the intensity.
+
+    Args:
+        sources: Positions of input `f` needed to be shifted.
+        targets: New positions of the sources. The rest of curve will be shifted
+            linearly in between sources.
+    """
+    sources = np.array(sources)
+    targets = np.array(targets)
+    t_interp = t.copy()
+
+    for i in range(1, len(sources)):
+        source_left = sources[i-1]
+        source_right = sources[i]
+        target_left = targets[i-1]
+        target_right = targets[i]
+
+        # Linearly stretch the source intervals to the target interverals.
+        t_target_index = (t >= target_left) & (t < target_right)
+        t_target = t[t_target_index]
+        if len(t_target) == 0:
+            continue
+        t_interp[t_target_index] = ((t_target - target_left) *
+            (source_right - source_left) / (target_right - target_left)
+            + source_left)
+    # Run the linear interporation using the sample points.
+    f_warp = np.interp(t_interp, t, f)
+    return f_warp
+
+# Run the linear interporation using the sample points.
+f_warp = np.interp(t_interp, t, f)
+    
 def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
     nneuron = len(model_list)
     # Get three dimension matrix of coupling filters for better computing. 
