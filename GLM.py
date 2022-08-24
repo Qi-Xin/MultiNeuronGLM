@@ -1,5 +1,6 @@
 """Data models."""
 from curses import raw
+from multiprocessing.spawn import old_main_modules
 import os
 from tkinter import Menu
 
@@ -75,6 +76,7 @@ class PP_GLM():
         self.effect_type_list = []
         self.raw_input_list = []
         self.kwargs_list = []
+        self.target = None
 
     def add_effect(self, effect_type, raw_input=None, use_all=False, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
@@ -255,21 +257,22 @@ class PP_GLM():
 
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
-        self.target = target
-        if type(target) == str:
-            # print(f"Assuming output is spike trains from {target}")
-            self.output = utils.pooling_pop(self.membership, self.condition_ids, 
-                                    self.dataset, target, 0, use_all=use_all)
-            self.output = self.output[:,self.select_trials]
-        elif type(target) == np.ndarray:
-            self.output = target
-        else:
-            raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
-        if self.npadding is not None:
-            self.output = self.output[self.npadding:, :]
-        self.response = self.output.flatten('F')
+        if self.target is None:
+            self.target = target
+            if type(target) == str:
+                # print(f"Assuming output is spike trains from {target}")
+                self.output = utils.pooling_pop(self.membership, self.condition_ids, 
+                                        self.dataset, target, 0, use_all=use_all)
+                self.output = self.output[:,self.select_trials]
+            elif type(target) == np.ndarray:
+                self.output = target
+            else:
+                raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
+            if self.npadding is not None:
+                self.output = self.output[self.npadding:, :]
+            self.response = self.output.flatten('F')
+        
         self.predictors = np.hstack(self.effect_list)
-        # self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         if penalty != 0 or method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         elif method=='logit':
@@ -281,7 +284,6 @@ class PP_GLM():
         else:
             self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
-        # self.log_lmbd_ci = (self.predictors@self.results.bse).reshape((self.nt, self.ntrial), order='F')
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
         self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True)
         self.aic = self.predictors.shape[1] + self.nll
@@ -328,7 +330,7 @@ class PP_GLM():
                 result_filter.append(y)
         return result_filter
     
-    def get_filter_output(self, ci=False):
+    def get_filter_output(self, trial_wise=False, ci=False):
         ### say there are one inhomo baseline and three coupling filters, 
         ### result_output[2] contains the information for the second coupling filters
         ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
@@ -346,10 +348,14 @@ class PP_GLM():
             coef = self.results.params[start_col:end_col]
             if self.basis_name[effect_id] == "inhomogeneous_baseline":
                 predicters_temp = self.basis_list[effect_id]
+                if trial_wise:
+                    predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
                 coef = self.results.params[start_col:end_col]
                 y = (predicters_temp@coef[:,np.newaxis]).squeeze()
                 se = self.results.bse[start_col:end_col]
                 one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+                if trial_wise:
+                    y_all_trial = y
             else:
                 predicters_temp = self.effect_list[effect_id]
                 coef = self.results.params[start_col:end_col]
@@ -361,7 +367,10 @@ class PP_GLM():
             if ci:
                 result_output.append([y,one_sigma_ci])
             else:
-                result_output.append(y)
+                if trial_wise:
+                    result_output.append(y_all_trial)
+                else:
+                    result_output.append(y)
         return result_output
     
     def get_filter_contribution(self, time_range=None, auto_pick=None):
@@ -426,34 +435,146 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
-    def fit_time_warpping_baseline(self, max_iter=100,  verbose=True):
+    def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, tol=1e-10, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
-        self.shifts = np.zeros((self.ntrial, 2))
-        # find which Xs should be warpped
-        effect_id_list = np.arange(len(self.basis_name))
-        for effect_id in effect_id_list:
-            if self.effect_type_list[effect_id] == 'inhomogeneous_baseline'：
-                start_col = 0
-                for previous_id in range(effect_id):
-                    start_col += (self.effect_list[previous_id]).shape[1]
-                nbasis = (self.effect_list[effect_id]).shape[1]
-                end_col = start_col + nbasis
+        
+        ALPHA = 0.5   # to smooth the optimization process
+        BETA = 0.0   # to smooth the optimization process
+        THETA = 0.95   # Mean converge
+
+        # Find the effect index that should be warpped
+        i_effect = [i_effect for i_effect,effect_type in enumerate(self.effect_type_list) 
+            if effect_type=='inhomogeneous_baseline'][0]
+        
+        # Initialization
+        self.shifts = np.zeros((self.ntrial, 4))
+        nll_old = np.inf
+        X_baseline_original = self.effect_list[i_effect]
+        
         for iter in range(max_iter):
-            # update shifts
-            pass
-            # update coef
+            # update coef (based on *warped* effect_list[i_effect])
+            self.fit(target, use_all=use_all, verbose=False, penalty=penalty)
             
-        #
-        pass
+            # #################
+            # if iter>=1:
+            #     log_lmbd = (self.predictors@old_results.params).reshape((self.nt, self.ntrial), order='F')
+            #     print("xxx")
+            #     print( spike_trains_neg_log_likelihood(log_lmbd, self.output) )
+            #     print((self.effect_list[0]@old_results.params) [0:50])
+            #     print("xxx")
+                
+            # #######################
+            
+            # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
+            
+            inhomo_template = self.get_filter_output(trial_wise=False, ci=False)[i_effect]
+            result_output = self.get_filter_output(trial_wise=True, ci=False)
+            inhomo = result_output[i_effect]
+            total_output = np.vstack((result_output)).T
+            total_output = total_output.sum(axis=1)
+            minus_one_output = total_output - inhomo
+            if verbose:
+                print(f"After the {iter} th iteration of fitting: {self.nll}")
+                
+            # Update shifts (based on non-warping inhomo baseline)
+            best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, self.response, self.nt)
+            if iter==0:
+                self.shifts = best_shift
+            else:
+                self.shifts[:,1] = BETA*self.shifts[:,1] + (1-BETA)*best_shift[:,1]
+                self.shifts[:,3] = BETA*self.shifts[:,3] + (1-BETA)*best_shift[:,3]
+                self.shifts[:,0] = ALPHA*self.shifts[:,0] + (1-ALPHA)*best_shift[:,0]
+                self.shifts[:,2] = ALPHA*self.shifts[:,2] + (1-ALPHA)*best_shift[:,2]
+                # self.shifts = BETA*self.shifts + (1-BETA)*best_shift
+                # self.shifts = best_shift
+            self.shifts[:,1] = (self.shifts[:,1] - self.shifts[:,0])*THETA + self.shifts[:,0]
+            self.shifts[:,3] = (self.shifts[:,3] - self.shifts[:,2])*THETA + self.shifts[:,2]
+            X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt)
+            self.effect_list[i_effect] = X_baseline_warp
+            
+            if verbose:
+                print(f"After the {iter} th iteration of warping: {nll}")
+            
+            # ###########################
+            
+            # old_results = self.results
+            # print((X_baseline_warp@old_results.params) [0:50])
+            # print( spike_trains_neg_log_likelihood((X_baseline_warp@old_results.params).reshape((self.nt, self.ntrial)), self.output)  )
+            # ##################################
+            
+            # if not_updating, break
+            if nll_old - nll < tol:
+                # Finished fitting
+                pass
+                # break
+            nll_old = nll
+            
+        # Finished fitting
+        if iter == max_iter:
+            print("Maximum iteration reach!")
+        self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
+        self.inhomo_template = inhomo_template
+        
+def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
+    ntrial = int(len(response)/nt)
+    best_shifts = np.zeros((ntrial, 4))
+    total_nll = 0
+    rcd_log_lmbd = np.zeros_like(response)
+    for itrial in range(ntrial):
+        best_shifts_trial, best_nll_trial = get_best_shift_single(time_line, 
+                                                inhomo_template, 
+                                                minus_one_output[itrial*nt:(itrial+1)*nt], 
+                                                response[itrial*nt:(itrial+1)*nt])
+        best_shifts[itrial, :] = best_shifts_trial
+        total_nll += best_nll_trial
+    return best_shifts, total_nll
+
+def get_best_shift_single(time_line, inhomo_template, minus_one_output, response):
+    search_grid = np.arange(0, 0.15, 0.002)
+    peak1 = time_line[np.argmax(inhomo_template[time_line<0.15])]
+    sources = [0, peak1, 0.15]
+    best_nll = np.inf
+    for moved_peak in search_grid:
+        targets = [0, moved_peak, 0.15]
+        
+        warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
+        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response)
+        if nll <= best_nll:
+            best_shift_peak1 = moved_peak
+            best_warped1 = warped
+            best_nll = nll
     
-def linear_time_warping_single(
-    cls,
-    t,
-    f,
-    sources,
-    targets,
-    output_file=None,
-    verbose=True):
+    search_grid = np.arange(0.15, 0.35, 0.002)
+    peak2 = time_line[np.sum(time_line<0.15)+np.argmax(inhomo_template[time_line>=0.15])]
+    sources = [0.15, peak2, 0.35]
+    best_nll = np.inf
+    for moved_peak in search_grid:
+        targets = [0.15, moved_peak, 0.35]
+        warped = linear_time_warping_single(time_line, best_warped1, sources, targets, verbose=False)
+        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response)
+        if nll <= best_nll:
+            best_shift_peak2 = moved_peak
+            best_warped2 = warped
+            best_nll = nll
+    return np.array([peak1, best_shift_peak1, peak2, best_shift_peak2]), best_nll
+
+def apply_warping_to_predictors(time_line, X_baseline_original, shifts, nt):
+    ntrial = int(X_baseline_original.shape[0]/nt)
+    X_baseline_warp = np.zeros_like(X_baseline_original)
+    for itrial in range(ntrial):
+        sources1 = [0, shifts[itrial, 0], 0.15]
+        targets1 = [0, shifts[itrial, 1], 0.15]
+        sources2 = [0.15, shifts[itrial, 2], 0.35]
+        targets2 = [0.15, shifts[itrial, 3], 0.35]
+        for i_col in range(X_baseline_warp.shape[1]):
+            to_warp = X_baseline_original[itrial*nt:(itrial+1)*nt, i_col]
+            warped = linear_time_warping_single(time_line, to_warp, sources1, targets1, verbose=False)
+            to_warp = warped
+            warped = linear_time_warping_single(time_line, to_warp, sources2, targets2, verbose=False)
+            X_baseline_warp[itrial*nt:(itrial+1)*nt, i_col] = warped
+    return X_baseline_warp
+    
+def linear_time_warping_single(t, f, sources, targets, verbose=True):
     """Time warping function for the intensity.
 
     Args:
@@ -482,9 +603,6 @@ def linear_time_warping_single(
     # Run the linear interporation using the sample points.
     f_warp = np.interp(t_interp, t, f)
     return f_warp
-
-# Run the linear interporation using the sample points.
-f_warp = np.interp(t_interp, t, f)
     
 def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
     nneuron = len(model_list)
@@ -900,6 +1018,7 @@ def merge_dict(d1, d2):
     return d
 
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
+    max_iter = 5
     statistics_null = {}   # dict to return
     ROI_null = {}
     # Get permutated running and stationary index
@@ -919,12 +1038,17 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
                            condition_ids=condition_ids)
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
+            # if i==j:
+            #     continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
-        model.fit(probe_list[i], verbose=False)
+        # model.fit(probe_list[i], verbose=False)
+        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter)
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
+            # if i==j:
+            #     continue
             running_filter_temp[i,j] = filter_list[k]
             k += 1
 
@@ -935,12 +1059,17 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
                            condition_ids=condition_ids)
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
         for j, input_probe in enumerate(probe_list):
+            # if i==j:
+            #     continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
-        model.fit(probe_list[i], verbose=False)
+        # model.fit(probe_list[i], verbose=False)
+        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter)
         filter_list = model.get_filter(ci=True)
         stationary_filter_temp[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
+            # if i==j:
+            #     continue
             stationary_filter_temp[i,j] = filter_list[k]
             k += 1
 
@@ -953,6 +1082,8 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
         
         for j, input_probe in enumerate(probe_list):
+            # if i==j:
+            #     continue
             filter_index = i,j
             function1 = running_filter_temp[filter_index][0]
             function2 = stationary_filter_temp[filter_index][0]
