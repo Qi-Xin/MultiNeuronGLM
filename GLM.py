@@ -3,6 +3,7 @@ from curses import raw
 from multiprocessing.spawn import old_main_modules
 import os
 from tkinter import Menu
+from urllib.parse import ParseResultBytes
 
 from absl import logging
 import collections
@@ -462,7 +463,7 @@ class PP_GLM():
             #     print( spike_trains_neg_log_likelihood(log_lmbd, self.output) )
             #     print((self.effect_list[0]@old_results.params) [0:50])
             #     print("xxx")
-                
+            
             # #######################
             
             # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
@@ -515,6 +516,8 @@ class PP_GLM():
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
         self.inhomo_template = inhomo_template
         
+        
+################### None MP
 def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
     ntrial = int(len(response)/nt)
     best_shifts = np.zeros((ntrial, 4))
@@ -528,6 +531,39 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
+
+
+################## MP version
+# def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
+#     import multiprocessing
+#     import os
+#     ntrial = int(len(response)/nt)
+#     best_shifts = np.zeros((ntrial, 4))
+#     total_nll = 0
+#     rcd_log_lmbd = np.zeros_like(response)
+#     # PROCESSES = os.cpu_count()-2
+#     PROCESSES = 3
+#     PARALLEL_BATCH_SIZE = ntrial
+#     nbatch = int(np.ceil(ntrial/PARALLEL_BATCH_SIZE))
+    
+#     if sys.platform == 'linux':
+#         for ibatch in range(nbatch):
+#             with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:
+#                 results = [pool.apply_async(get_best_shift_single, (time_line, 
+#                                                                     inhomo_template, 
+#                                                                     minus_one_output[itrial*nt:(itrial+1)*nt], 
+#                                                                     response[itrial*nt:(itrial+1)*nt]))
+#                             for itrial in (np.arange(PARALLEL_BATCH_SIZE) + ibatch*PARALLEL_BATCH_SIZE)]
+#                 pool.close()
+#                 for iresult, result in enumerate(results):
+#                     itrial = iresult + ibatch*PARALLEL_BATCH_SIZE
+#                     best_shifts_trial, best_nll_trial = result.get()
+#                     best_shifts[itrial, :] = best_shifts_trial
+#                     total_nll += best_nll_trial
+#         return best_shifts, total_nll
+#     else:
+#         raise ValueError("Multiprocessing only support on Linux at the moment!")
+    
 
 def get_best_shift_single(time_line, inhomo_template, minus_one_output, response):
     search_grid = np.arange(0, 0.15, 0.002)
@@ -654,7 +690,9 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
     end_col = start_col + nbasis
     if results is None:
         results = model.results
-    if model.basis_name[effect_id] in ['inhomogeneous_baseline','homogeneous_baseline']:
+    if model.basis_name[effect_id] in ['inhomogeneous_baseline',
+                                       'homogeneous_baseline', 
+                                       'time_warping_inhomogeneous_baseline']:
         use_exp = True
     else:
         use_exp = False
