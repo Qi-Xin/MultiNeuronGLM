@@ -1,4 +1,4 @@
-"""Data models."""
+#%% import
 from curses import raw
 from multiprocessing.spawn import old_main_modules
 import os
@@ -38,6 +38,7 @@ import statsmodels.genmod.generalized_linear_model as smm
 
 import utility_functions as utils
 
+#%% PP_GLM class
 class PP_GLM():
     def __init__(self, 
                  dataset=None, 
@@ -456,16 +457,6 @@ class PP_GLM():
             # update coef (based on *warped* effect_list[i_effect])
             self.fit(target, use_all=use_all, verbose=False, penalty=penalty)
             
-            # #################
-            # if iter>=1:
-            #     log_lmbd = (self.predictors@old_results.params).reshape((self.nt, self.ntrial), order='F')
-            #     print("xxx")
-            #     print( spike_trains_neg_log_likelihood(log_lmbd, self.output) )
-            #     print((self.effect_list[0]@old_results.params) [0:50])
-            #     print("xxx")
-            
-            # #######################
-            
             # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
             
             inhomo_template = self.get_filter_output(trial_wise=False, ci=False)[i_effect]
@@ -496,13 +487,6 @@ class PP_GLM():
             if verbose:
                 print(f"After the {iter} th iteration of warping: {nll}")
             
-            # ###########################
-            
-            # old_results = self.results
-            # print((X_baseline_warp@old_results.params) [0:50])
-            # print( spike_trains_neg_log_likelihood((X_baseline_warp@old_results.params).reshape((self.nt, self.ntrial)), self.output)  )
-            # ##################################
-            
             # if not_updating, break
             if nll_old - nll < tol:
                 # Finished fitting
@@ -516,8 +500,8 @@ class PP_GLM():
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
         self.inhomo_template = inhomo_template
         
-        
-################### None MP
+#%% Time-warping baseline
+### None MP
 def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
     ntrial = int(len(response)/nt)
     best_shifts = np.zeros((ntrial, 4))
@@ -533,7 +517,7 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
     return best_shifts, total_nll
 
 
-################## MP version
+### MP version (unfortunately this is slower than the non MP version)
 # def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
 #     import multiprocessing
 #     import os
@@ -640,12 +624,17 @@ def linear_time_warping_single(t, f, sources, targets, verbose=True):
     f_warp = np.interp(t_interp, t, f)
     return f_warp
     
+#%% Simulation
 def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
     nneuron = len(model_list)
     # Get three dimension matrix of coupling filters for better computing. 
     # for 
     # Start simulate one by one
     
+def simulate_baseline_coupling():
+    pass
+
+#%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
     if exp==False:
         if np.any(f<=0):
@@ -682,6 +671,7 @@ def get_best_time_range(total_output, minus_one_output, measure, time_range):
     best_l, best_r = np.where(kl==kl.max())
     return [best_l[0]+time_range[0], best_r[0]+time_range[0]]
 
+#%% Plotting GLM
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
     start_col = 0
     for previous_id in range(effect_id):
@@ -731,6 +721,7 @@ def plot_GLM_compare(model, effect_id_list=None,  results_list=None, title_list=
         i_effect += 1
         plt.show()
 
+#%% Get predictors for coupling effects
 def conv_flip(raw_input, kernel, npadding=None, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
@@ -793,6 +784,7 @@ def conv_multi_trial(raw_input, kernel, merge_trial=False, npadding=None, enforc
         G = G.flatten('F')
     return G
 
+#%% Make basis for inhomo baseline, coupling filter (Pillow basis), etc.
 def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, apply_trial=None):
     basis = make_b_spline_basis(
         t_min=start, 
@@ -846,7 +838,6 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, v
         plt.plot(ihbasis, '-')
         plt.show()
     return ihbasis
-
 
 def make_b_spline_basis(
     num_basis=10,
@@ -907,6 +898,7 @@ def make_b_spline_basis_arbitrary_knots(
 
     return basis_matrix
 
+#%% Generate spike train
 def generate_spike_train(lmbd, random_seed=None):
     """Generate one trial of spike train using firing rate lamdba.
 
@@ -925,6 +917,7 @@ def generate_spike_train(lmbd, random_seed=None):
         spike_train[t] = num_spikes
     return spike_train
 
+#%% Calculating log likelihood
 def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
     """Calculates the log-likelihood of a spike train given log firing rate.
 
@@ -961,6 +954,7 @@ class poisson_regression_result():
         self.params = params
         self.bse = bse
 
+#%% Core code for fitting Poisson GLM
 def poisson_regression(
         Y,
         X,
@@ -1033,7 +1027,7 @@ def poisson_regression(
     return poisson_regression_result(beta.squeeze(), bse)
 
 
-
+#%% Excursion test
 def get_excursion_test(function1, function2, ROI_list):
     stats_list = []
     for i, ROI in enumerate(ROI_list):
