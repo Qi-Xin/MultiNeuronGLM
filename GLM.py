@@ -11,6 +11,7 @@ from collections import defaultdict
 import io
 import itertools
 import numpy as np
+import numpy.random
 import matplotlib.pyplot as plt
 import pandas as pd
 from psycopg2 import paramstyle
@@ -626,13 +627,57 @@ def linear_time_warping_single(t, f, sources, targets, verbose=True):
     
 #%% Simulation
 def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
-    nneuron = len(model_list)
-    # Get three dimension matrix of coupling filters for better computing. 
-    # for 
-    # Start simulate one by one
+    # Get {probe2num} dictionary
+    probe2num = {}
+    for iprobe, probe in enumerate(probe_list):
+        probe2num[probe] = iprobe
     
-def simulate_baseline_coupling():
-    pass
+    # Get three dimension matrix of coupling filters for better computing.   
+    nneuron = len(model_list)
+    max_histories = 1
+    nt = model_list[0].nt
+    allowed_effect_type = ['inhomogeneous_baseline', 'coupling', 'trial_coef']
+    baseline_mat = np.zeros((nt, nneuron))
+    coupling_mat = np.zeros((max_histories, nneuron, nneuron))
+    
+    
+    for ineuron in range(nneuron):
+        assert all(effect_type in allowed_effect_type for effect_type in model_list[ineuron].effect_type_list), "Only support inhomogeneous_baseline and coupling effects now!"
+        model = model_list[ineuron]
+        for ieffect, effect_type in enumerate(model.effect_type_list):
+            
+            if effect_type in ['inhomogeneous_baseline']:
+                baseline_mat[:, ineuron] = model.filters[ieffect]
+            elif effect_type in ['coupling']:
+                nhistories = len(model.filters[ieffect])
+                probe_name = utils.PROBE_CORRESPONDING_INVERSE[model.basis_name[ieffect][-2:]]
+                iprobe = probe2num[probe_name]
+                if nhistories > max_histories:
+                    coupling_mat_old = coupling_mat
+                    coupling_mat = np.zeros((nhistories, nneuron, nneuron))
+                    coupling_mat[-max_histories:, :, :] = coupling_mat_old
+                    max_histories = nhistories
+                coupling_mat[-nhistories:, iprobe, ineuron] = np.flip(model.filters[ieffect])
+    
+    spikes, log_firing_rate = simulate_baseline_coupling(baseline_mat, coupling_mat)
+    return spikes, log_firing_rate
+    
+def simulate_baseline_coupling(baseline_mat, coupling_mat):
+    max_histories, _, nneuron = coupling_mat.shape
+    nt = baseline_mat.shape[0]
+    spikes = np.zeros((nt, nneuron, 1))
+    log_firing_rate = baseline_mat[:,:,np.newaxis]
+    spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
+
+    for t in range(1, nt):
+        nhistories = min(t, max_histories)
+        temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
+        log_firing_rate[t,:,0] = temp_log_firing_rate
+        spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
+
+    log_firing_rate = log_firing_rate.squeeze()
+    spikes = spikes.squeeze()
+    return spikes, log_firing_rate
 
 #%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
