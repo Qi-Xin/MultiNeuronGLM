@@ -2,7 +2,7 @@
 from curses import raw
 from multiprocessing.spawn import old_main_modules
 import os
-from tkinter import Menu
+from tkinter import N, Menu
 from urllib.parse import ParseResultBytes
 
 from absl import logging
@@ -640,7 +640,6 @@ def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'pr
     baseline_mat = np.zeros((nt, nneuron))
     coupling_mat = np.zeros((max_histories, nneuron, nneuron))
     
-    
     for ineuron in range(nneuron):
         assert all(effect_type in allowed_effect_type for effect_type in model_list[ineuron].effect_type_list), "Only support inhomogeneous_baseline and coupling effects now!"
         model = model_list[ineuron]
@@ -672,7 +671,36 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
     for t in range(1, nt):
         nhistories = min(t, max_histories)
         temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
-        log_firing_rate[t,:,0] = temp_log_firing_rate
+        log_firing_rate[t,:,0] += temp_log_firing_rate
+        spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
+
+    log_firing_rate = log_firing_rate.squeeze()
+    spikes = spikes.squeeze()
+    return spikes, log_firing_rate
+
+def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuron_list=None):
+    max_histories_history = 0
+    if nneuron_list is not None:
+        assert len(history_list) == len(nneuron_list), "The number of populations should matach!"
+        for i, history in enumerate(history_list):
+            history_list[i] = np.matlib.repmat(history, nneuron_list[i], 1).T
+            max_histories_history = max(max_histories_history, history.shape[0])
+    else:
+        for i, history in enumerate(history_list):
+            nneuron_list[i] = history.shape[1]
+            max_histories_history = max(max_histories_history, history.shape[0])
+            
+    max_histories_coupling, _, npop = coupling_mat.shape
+    nt = baseline_mat.shape[0]
+    nneuron = np.sum([nneuron_list[i] for i in range(len(nneuron_list))])
+    spikes = np.zeros((nt, nneuron, 1))
+    log_firing_rate = baseline_mat[:,:,np.newaxis]
+    spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
+
+    for t in range(1, nt):
+        nhistories = min(t, max_histories_coupling)
+        temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
+        log_firing_rate[t,:,0] += temp_log_firing_rate
         spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
 
     log_firing_rate = log_firing_rate.squeeze()
