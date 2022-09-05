@@ -681,7 +681,8 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
 def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuron_list=None):
     # nneuron: number of individual neuorns
     # npop: number of populations
-
+    temp = copy.deepcopy(history_list)
+    history_list = temp
     max_histories_history = 0
     if nneuron_list is not None:
         assert len(history_list) == len(nneuron_list), "The number of populations should matach!"
@@ -698,7 +699,7 @@ def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuro
     nt = baseline_mat.shape[0]
     pop_spikes = np.zeros((nt, npop, 1))
     ind_spikes = [np.zeros((nt, nneuron_list[i])) for i in range(npop)]
-    log_firing_rate_pop_level = baseline_mat[:,:,np.newaxis]
+    log_firing_rate_pop_level = copy.deepcopy(baseline_mat[:,:,np.newaxis])  # np.newaxis doesn't create a new data array!!!
     # t=0
     for ipop in range(npop):
         log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
@@ -713,8 +714,8 @@ def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuro
         log_firing_rate_coupling = (coupling_mat[-nhistories:, :, :] * pop_spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate_pop_level[t,:,0] += log_firing_rate_coupling
         for ipop in range(npop):
-            log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
-                                - np.log(nneuron_list[i])
+            log_firing_rate_ind = log_firing_rate_pop_level[t, ipop, 0]*np.ones(nneuron_list[ipop]) \
+                                - np.log(nneuron_list[ipop])
             nhistories = min(t, max_histories_history)
             log_firing_rate_ind_only_history = (history_list[ipop][-nhistories:,:] * ind_spikes[ipop][(t-nhistories):(t), :]).sum(axis=0)
             log_firing_rate_ind += log_firing_rate_ind_only_history
