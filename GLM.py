@@ -633,14 +633,14 @@ def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'pr
         probe2num[probe] = iprobe
     
     # Get three dimension matrix of coupling filters for better computing.   
-    nneuron = len(model_list)
+    npop = len(model_list)
     max_histories = 1
     nt = model_list[0].nt
     allowed_effect_type = ['inhomogeneous_baseline', 'coupling', 'trial_coef']
-    baseline_mat = np.zeros((nt, nneuron))
-    coupling_mat = np.zeros((max_histories, nneuron, nneuron))
+    baseline_mat = np.zeros((nt, npop))
+    coupling_mat = np.zeros((max_histories, npop, npop))
     
-    for ineuron in range(nneuron):
+    for ineuron in range(npop):
         assert all(effect_type in allowed_effect_type for effect_type in model_list[ineuron].effect_type_list), "Only support inhomogeneous_baseline and coupling effects now!"
         model = model_list[ineuron]
         for ieffect, effect_type in enumerate(model.effect_type_list):
@@ -653,7 +653,7 @@ def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'pr
                 iprobe = probe2num[probe_name]
                 if nhistories > max_histories:
                     coupling_mat_old = coupling_mat
-                    coupling_mat = np.zeros((nhistories, nneuron, nneuron))
+                    coupling_mat = np.zeros((nhistories, npop, npop))
                     coupling_mat[-max_histories:, :, :] = coupling_mat_old
                     max_histories = nhistories
                 coupling_mat[-nhistories:, iprobe, ineuron] = np.flip(model.filters[ieffect])
@@ -662,9 +662,9 @@ def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'pr
     return spikes, log_firing_rate
     
 def simulate_baseline_coupling(baseline_mat, coupling_mat):
-    max_histories, _, nneuron = coupling_mat.shape
+    max_histories, _, npop = coupling_mat.shape
     nt = baseline_mat.shape[0]
-    spikes = np.zeros((nt, nneuron, 1))
+    spikes = np.zeros((nt, npop, 1))
     log_firing_rate = baseline_mat[:,:,np.newaxis]
     spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
 
@@ -673,39 +673,55 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
         temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate[t,:,0] += temp_log_firing_rate
         spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
-
+    
     log_firing_rate = log_firing_rate.squeeze()
     spikes = spikes.squeeze()
     return spikes, log_firing_rate
 
 def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuron_list=None):
+    # nneuron: number of individual neuorns
+    # npop: number of populations
+
     max_histories_history = 0
     if nneuron_list is not None:
         assert len(history_list) == len(nneuron_list), "The number of populations should matach!"
         for i, history in enumerate(history_list):
+            assert history_list[i].ndim == 1
             history_list[i] = np.matlib.repmat(history, nneuron_list[i], 1).T
             max_histories_history = max(max_histories_history, history.shape[0])
     else:
         for i, history in enumerate(history_list):
             nneuron_list[i] = history.shape[1]
             max_histories_history = max(max_histories_history, history.shape[0])
-            
+
     max_histories_coupling, _, npop = coupling_mat.shape
     nt = baseline_mat.shape[0]
-    nneuron = np.sum([nneuron_list[i] for i in range(len(nneuron_list))])
-    spikes = np.zeros((nt, nneuron, 1))
-    log_firing_rate = baseline_mat[:,:,np.newaxis]
-    spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
+    pop_spikes = np.zeros((nt, npop, 1))
+    ind_spikes = [np.zeros((nt, nneuron_list[i])) for i in range(npop)]
+    log_firing_rate_pop_level = baseline_mat[:,:,np.newaxis]
+    # t=0
+    for ipop in range(npop):
+        log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
+                            - np.log(nneuron_list[i])
+        log_firing_rate_ind_only_history = 0
+        log_firing_rate_ind += log_firing_rate_ind_only_history
+        ind_spikes[ipop][0, :] = np.random.poisson(np.exp(log_firing_rate_ind))
+        pop_spikes[0,ipop,0] = np.sum(ind_spikes[ipop][0, :])
 
     for t in range(1, nt):
         nhistories = min(t, max_histories_coupling)
-        temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
-        log_firing_rate[t,:,0] += temp_log_firing_rate
-        spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
+        log_firing_rate_coupling = (coupling_mat[-nhistories:, :, :] * pop_spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
+        log_firing_rate_pop_level[t,:,0] += log_firing_rate_coupling
+        for ipop in range(npop):
+            log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
+                                - np.log(nneuron_list[i])
+            nhistories = min(t, max_histories_history)
+            log_firing_rate_ind_only_history = (history_list[ipop][-nhistories:,:] * ind_spikes[ipop][(t-nhistories):(t), :]).sum(axis=0)
+            log_firing_rate_ind += log_firing_rate_ind_only_history
+            ind_spikes[ipop][t, :] = np.random.poisson(np.exp(log_firing_rate_ind))
+            pop_spikes[t,ipop,0] = np.sum(ind_spikes[ipop][t, :])
 
-    log_firing_rate = log_firing_rate.squeeze()
-    spikes = spikes.squeeze()
-    return spikes, log_firing_rate
+    return pop_spikes.squeeze(), log_firing_rate_pop_level.squeeze()
 
 #%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
