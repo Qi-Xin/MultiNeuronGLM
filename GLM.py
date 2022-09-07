@@ -701,29 +701,31 @@ def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuro
     ind_spikes = [np.zeros((nt, nneuron_list[i])) for i in range(npop)]
     log_firing_rate_pop_level = copy.deepcopy(baseline_mat[:,:,np.newaxis])  # np.newaxis doesn't create a new data array!!!
     # t=0
+    log_firing_rate_ind_only_history_rcd = []
     for ipop in range(npop):
+        log_firing_rate_ind_only_history_rcd.append(np.zeros((nt, nneuron_list[ipop])))
         log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
                             - np.log(nneuron_list[i])
         log_firing_rate_ind_only_history = 0
         log_firing_rate_ind += log_firing_rate_ind_only_history
         ind_spikes[ipop][0, :] = np.random.poisson(np.exp(log_firing_rate_ind))
         pop_spikes[0,ipop,0] = np.sum(ind_spikes[ipop][0, :])
-
+    
     for t in range(1, nt):
         nhistories = min(t, max_histories_coupling)
         log_firing_rate_coupling = (coupling_mat[-nhistories:, :, :] * pop_spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate_pop_level[t,:,0] += log_firing_rate_coupling
         for ipop in range(npop):
-            log_firing_rate_ind = log_firing_rate_pop_level[t, ipop, 0]*np.ones(nneuron_list[ipop]) \
-                                - np.log(nneuron_list[ipop])
+            log_firing_rate_ind = log_firing_rate_pop_level[t, ipop, 0]*np.ones(nneuron_list[ipop]) #- np.log(nneuron_list[ipop])
             nhistories = min(t, max_histories_history)
             log_firing_rate_ind_only_history = (history_list[ipop][-nhistories:,:] * ind_spikes[ipop][(t-nhistories):(t), :]).sum(axis=0)
             log_firing_rate_ind += log_firing_rate_ind_only_history
             ind_spikes[ipop][t, :] = np.random.poisson(np.exp(log_firing_rate_ind))
             pop_spikes[t,ipop,0] = np.sum(ind_spikes[ipop][t, :])
+            log_firing_rate_ind_only_history_rcd[ipop][t, :] = log_firing_rate_ind_only_history
 
-    return pop_spikes.squeeze(), log_firing_rate_pop_level.squeeze()
-
+    return pop_spikes.squeeze(), log_firing_rate_pop_level.squeeze(), log_firing_rate_ind_only_history_rcd
+    
 #%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
     if exp==False:
