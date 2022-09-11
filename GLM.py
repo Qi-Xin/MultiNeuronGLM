@@ -662,16 +662,18 @@ def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'pr
     return spikes, log_firing_rate
     
 def simulate_baseline_coupling(baseline_mat, coupling_mat):
+    MAX_FIRING_RATE = np.log(1000)
     max_histories, _, npop = coupling_mat.shape
     nt = baseline_mat.shape[0]
     spikes = np.zeros((nt, npop, 1))
-    log_firing_rate = baseline_mat[:,:,np.newaxis]
+    log_firing_rate = copy.deepcopy(baseline_mat[:,:,np.newaxis])
     spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
-
+    
     for t in range(1, nt):
         nhistories = min(t, max_histories)
         temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate[t,:,0] += temp_log_firing_rate
+        # log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
         spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
     
     log_firing_rate = log_firing_rate.squeeze()
@@ -679,7 +681,7 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
     return spikes, log_firing_rate
 
 def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuron_list=None):
-    MAX_FIRING_RATE = np.log(5)
+    MAX_FIRING_RATE = np.log(100)
     # nneuron: number of individual neuorns
     # npop: number of populations
     temp = copy.deepcopy(history_list)
