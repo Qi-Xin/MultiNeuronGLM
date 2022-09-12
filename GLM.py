@@ -673,7 +673,7 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
         nhistories = min(t, max_histories)
         temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate[t,:,0] += temp_log_firing_rate
-        # log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
+        log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
         spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
     
     log_firing_rate = log_firing_rate.squeeze()
