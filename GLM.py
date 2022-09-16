@@ -594,7 +594,7 @@ def apply_warping_to_predictors(time_line, X_baseline_original, shifts, nt):
             warped = linear_time_warping_single(time_line, to_warp, sources2, targets2, verbose=False)
             X_baseline_warp[itrial*nt:(itrial+1)*nt, i_col] = warped
     return X_baseline_warp
-    
+
 def linear_time_warping_single(t, f, sources, targets, verbose=True):
     """Time warping function for the intensity.
 
