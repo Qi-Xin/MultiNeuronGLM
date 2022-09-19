@@ -182,9 +182,13 @@ class PP_GLM():
             
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
+            X_refractory /= tau
             self.effect_list.append(X_refractory)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
+            
+        elif effect_type == 'nonlinear_refractory':
+            pass
             
         elif effect_type == 'trial_coef':
             X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial))
@@ -258,8 +262,7 @@ class PP_GLM():
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
 
-
-    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine'):
+    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
         if self.target is None:
             self.target = target
             if type(target) == str:
@@ -279,22 +282,24 @@ class PP_GLM():
         if penalty != 0 or method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
         elif method=='logit':
-            success_fail = np.zeros((len(self.response), 2))
-            success_fail[:,0] = self.response
-            self.spikes_max = int(self.response.max() * 1)
-            success_fail[:,1] = self.spikes_max - self.response
+            success_fail, max_spike = get_success_fail(self.response, max_spike=max_spike, return_max_spike=True)
             self.results = sm.GLM(success_fail, self.predictors, family=sm.families.Binomial()).fit()
         else:
             self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        self.max_spike = max_spike
+        
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
-        self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output)
-        self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True)
+        self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, max_spike=self.max_spike)
+        self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True, max_spike=self.max_spike)
         self.aic = self.predictors.shape[1] + self.nll
         self.filters = self.get_filter(ci=False)
         if verbose:
             print(f"Negative log likelihood is: {self.nll :.2f}")
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
+    
+    def fit_again(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
+        pass
     
     def deviance_test(self, verbose=False):
         # Not really useful with tens of thousands of column
@@ -438,7 +443,8 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
-    def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, tol=1e-10, verbose=True):
+    def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, 
+                                  tol=1e-10, method='mine', max_spike=None, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         ALPHA = 0.5   # to smooth the optimization process
@@ -456,7 +462,7 @@ class PP_GLM():
         
         for iter in range(max_iter):
             # update coef (based on *warped* effect_list[i_effect])
-            self.fit(target, use_all=use_all, verbose=False, penalty=penalty)
+            self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
             
             # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
             
@@ -470,7 +476,8 @@ class PP_GLM():
                 print(f"After the {iter} th iteration of fitting: {self.nll}")
                 
             # Update shifts (based on non-warping inhomo baseline)
-            best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, self.response, self.nt)
+            best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                                              self.response, self.nt, max_spike=self.max_spike)
             if iter==0:
                 self.shifts = best_shift
             else:
@@ -501,9 +508,34 @@ class PP_GLM():
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
         self.inhomo_template = inhomo_template
         
+#%% Binomial GLM 'logit'
+def get_link(method):
+    if method=='logit':
+        link = lambda x: 1/(1+np.exp(-x))
+    else:
+        link = np.exp
+    return link
+
+def get_success_fail(response, return_max_spike=False, max_spike=None):
+    success_fail = np.zeros((*response.shape, 2))
+    if response.ndim == 1:
+        success_fail[:,0] = response
+    else:
+        success_fail[:,:,0] = response
+    if max_spike is None:
+        max_spike = int(response.max() * 1)
+    if response.ndim == 1:
+        success_fail[:,1] = max_spike - response
+    else:
+        success_fail[:,:,1] = max_spike - response
+    if return_max_spike:
+        return success_fail, max_spike
+    else:
+        return success_fail
+    
 #%% Time-warping baseline
 ### None MP
-def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
+def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None):
     ntrial = int(len(response)/nt)
     best_shifts = np.zeros((ntrial, 4))
     total_nll = 0
@@ -512,7 +544,8 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
         best_shifts_trial, best_nll_trial = get_best_shift_single(time_line, 
                                                 inhomo_template, 
                                                 minus_one_output[itrial*nt:(itrial+1)*nt], 
-                                                response[itrial*nt:(itrial+1)*nt])
+                                                response[itrial*nt:(itrial+1)*nt], 
+                                                max_spike=max_spike)
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
@@ -550,7 +583,7 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
 #         raise ValueError("Multiprocessing only support on Linux at the moment!")
     
 
-def get_best_shift_single(time_line, inhomo_template, minus_one_output, response):
+def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None):
     search_grid = np.arange(0, 0.15, 0.002)
     peak1 = time_line[np.argmax(inhomo_template[time_line<0.15])]
     sources = [0, peak1, 0.15]
@@ -559,7 +592,7 @@ def get_best_shift_single(time_line, inhomo_template, minus_one_output, response
         targets = [0, moved_peak, 0.15]
         
         warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
-        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response)
+        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
         if nll <= best_nll:
             best_shift_peak1 = moved_peak
             best_warped1 = warped
@@ -572,7 +605,7 @@ def get_best_shift_single(time_line, inhomo_template, minus_one_output, response
     for moved_peak in search_grid:
         targets = [0.15, moved_peak, 0.35]
         warped = linear_time_warping_single(time_line, best_warped1, sources, targets, verbose=False)
-        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response)
+        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
         if nll <= best_nll:
             best_shift_peak2 = moved_peak
             best_warped2 = warped
@@ -729,7 +762,7 @@ def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuro
             log_firing_rate_ind_only_history_rcd[ipop][t, :] = log_firing_rate_ind_only_history
 
     return pop_spikes.squeeze(), log_firing_rate_pop_level.squeeze(), log_firing_rate_ind_only_history_rcd
-    
+
 #%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
     if exp==False:
@@ -1014,7 +1047,7 @@ def generate_spike_train(lmbd, random_seed=None):
     return spike_train
 
 #%% Calculating log likelihood
-def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
+def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, max_spike=None):
     """Calculates the log-likelihood of a spike train given log firing rate.
 
     When it calculates the log_likelihood funciton, it assumes that it is a
@@ -1028,21 +1061,43 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False):
                         In this case, `spike_trains` and `log_lmbd` have matching rows.
         spike_trains: (nt, ntrials) numpy array.
     """
-    if spike_trains.ndim == 1:
-        spike_trains = spike_trains[:, np.newaxis]
-    nt, ntrial= spike_trains.shape
-    if log_lmbd.ndim == 2:    # Trialwise intensity function.
-        nll = - (spike_trains * log_lmbd)
-        nll += np.exp(log_lmbd)
-        if trial_wise:
-            return nll.sum(axis=0)
-        else:
-            return nll.sum()
-        
-    elif log_lmbd.ndim == 1:    # Single intensity for all trials.
-        nll = - spike_trains.sum(axis=1) @ log_lmbd
-        nll += np.exp(log_lmbd).sum() * ntrial
-        return nll
+    # Having maximum spikes is just like binomial regression. 
+    # Having inf maximum spikes is Poisson
+    
+
+    if max_spike is None:
+        if spike_trains.ndim == 1:
+            spike_trains = spike_trains[:, np.newaxis]
+        nt, ntrial= spike_trains.shape
+        # Default is Poisson
+        if log_lmbd.ndim == 2:    # Trialwise intensity function.
+            nll = - (spike_trains * log_lmbd)
+            nll += np.exp(log_lmbd)
+            if trial_wise:
+                return nll.sum(axis=0)
+            else:
+                return nll.sum()
+        elif log_lmbd.ndim == 1:    # Single intensity for all trials.
+            nll = - spike_trains.sum(axis=1) @ log_lmbd
+            nll += np.exp(log_lmbd).sum() * ntrial
+            return nll
+    else:
+        # Binomial
+        if spike_trains.ndim == 1:
+            spike_trains = spike_trains[:, np.newaxis]
+        success_fail = get_success_fail(spike_trains, max_spike=max_spike)
+        link = get_link('logit')
+        lmbd = link(log_lmbd)
+        if log_lmbd.ndim == 2:    # Trialwise intensity function.
+            nll = -lmbd*success_fail[:,:,0] - (1-lmbd)*success_fail[:,:,1]
+            if trial_wise:
+                return nll.sum(axis=0)
+            else:
+                return nll.sum()
+        elif log_lmbd.ndim == 1:    # Single intensity for all trials.
+            success_fail_sum = success_fail.sum(axis=1)
+            nll = -lmbd[:,0]*success_fail_sum[:,0] - lmbd[:,1]*success_fail_sum[:,1]
+            return nll
 
 
 class poisson_regression_result():
