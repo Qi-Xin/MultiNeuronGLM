@@ -542,6 +542,7 @@ class PP_GLM():
             print("Maximum iteration reach!")
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
         self.inhomo_template = inhomo_template
+        self.nll = nll
         
 #%% Binomial GLM 'logit'
 def get_link(method):
