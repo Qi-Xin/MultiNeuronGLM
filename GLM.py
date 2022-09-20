@@ -140,7 +140,43 @@ class PP_GLM():
                 self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
             else:
                 self.basis_name.append(effect_type)
-                
+        
+        elif effect_type == 'interaction':
+            # Interaction term here is an interaction term of coupling effect and current spike count in a window
+            # The term can make the coupling effect of two spikes smaller than twice the coupling effect of one spike. 
+            if type(raw_input) == str:
+                # print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
+                input_to_couple = input_to_couple[:,self.select_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            
+            tau = kwargs.pop('tau',100)
+            refractory_spikes = np.zeros_like(input_to_couple)
+            temp = refractory_spikes[0, :]
+            for t in range(1, input_to_couple.shape[0]):
+                temp *= np.exp(-1000.0/self.dataset.fps/tau)
+                refractory_spikes[t, :] = temp
+                temp += input_to_couple[t, :]
+            
+            refractory_spikes = refractory_spikes[-self.nt:, :]
+            X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
+            X_refractory /= tau
+            
+            pillow_basis = make_pillow_basis(**kwargs)
+            X_coupling = conv(input_to_couple, pillow_basis, npadding=self.npadding)
+            self.basis_list.append(pillow_basis)
+            
+            self.effect_list.append(X_coupling*X_refractory)
+            
+            if type(raw_input) == str:
+                self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
+            else:
+                self.basis_name.append(effect_type)
+        
         elif effect_type == 'dense_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
@@ -187,7 +223,6 @@ class PP_GLM():
             self.effect_list.append(X_refractory)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
-            
             
         elif effect_type == 'trial_coef':
             X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial))
@@ -260,9 +295,7 @@ class PP_GLM():
         
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
-        
-        elif effect_type == 'interaction':
-            
+    
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
         if self.target is None:
