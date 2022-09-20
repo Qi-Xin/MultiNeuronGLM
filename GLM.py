@@ -92,7 +92,8 @@ class PP_GLM():
                         'varying_linear',
                         'dense_coupling',
                         'refractory',
-                        'trial_coef'],  "Not supported effect_type!"
+                        'trial_coef', 
+                        'interaction'],  "Not supported effect_type!"
 
         # record for later use
         self.effect_type_list.append(effect_type)
@@ -187,8 +188,6 @@ class PP_GLM():
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
             
-        elif effect_type == 'nonlinear_refractory':
-            pass
             
         elif effect_type == 'trial_coef':
             X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial))
@@ -261,6 +260,9 @@ class PP_GLM():
         
         elif effect_type == 'history':
             raise ValueError("Unfinish!")
+        
+        elif effect_type == 'interaction':
+            
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
         if self.target is None:
@@ -298,7 +300,7 @@ class PP_GLM():
             print(f"aic/2 is: {self.aic :.2f}")
         return self.results
     
-    def fit_again(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
+    def temporal_fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
         pass
     
     def deviance_test(self, verbose=False):
@@ -1064,7 +1066,6 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, ma
     # Having maximum spikes is just like binomial regression. 
     # Having inf maximum spikes is Poisson
     
-
     if max_spike is None:
         if spike_trains.ndim == 1:
             spike_trains = spike_trains[:, np.newaxis]
@@ -1096,8 +1097,8 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, ma
                 return nll.sum()
         elif log_lmbd.ndim == 1:    # Single intensity for all trials.
             success_fail_sum = success_fail.sum(axis=1)
-            nll = -lmbd[:,0]*success_fail_sum[:,0] - lmbd[:,1]*success_fail_sum[:,1]
-            return nll
+            nll = -lmbd*success_fail_sum[:,0] - (1-lmbd)*success_fail_sum[:,1]
+            return nll.sum()
 
 
 class poisson_regression_result():
