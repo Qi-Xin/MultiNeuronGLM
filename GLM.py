@@ -93,7 +93,9 @@ class PP_GLM():
                         'dense_coupling',
                         'refractory',
                         'trial_coef', 
-                        'interaction'],  "Not supported effect_type!"
+                        'interaction', 
+                        'interaction2', 
+                        'interaction3'],  "Not supported effect_type!"
 
         # record for later use
         self.effect_type_list.append(effect_type)
@@ -155,9 +157,7 @@ class PP_GLM():
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             
             tau = kwargs.pop('tau', 100)
-            ###########
-            cutoff = kwargs.pop('cutoff', 0.1)
-            ###########
+            order = kwargs.pop('order', 1)
             
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
@@ -170,21 +170,17 @@ class PP_GLM():
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
             
-            ###########
-            X_refractory = np.maximum(X_refractory, cutoff) - cutoff
-            ###########
-            
             pillow_basis = make_pillow_basis(**kwargs)
             X_coupling = conv(input_to_couple, pillow_basis, npadding=self.npadding)
             self.basis_list.append(pillow_basis)
             
-            self.effect_list.append(X_coupling*X_refractory)
+            self.effect_list.append(X_coupling*X_refractory**order)
             
             if type(raw_input) == str:
                 self.basis_name.append(effect_type+" from "+utils.PROBE_CORRESPONDING[raw_input])
             else:
                 self.basis_name.append(effect_type)
-        
+                
         elif effect_type == 'dense_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
