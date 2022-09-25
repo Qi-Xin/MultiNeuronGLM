@@ -154,7 +154,11 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             
-            tau = kwargs.pop('tau',100)
+            tau = kwargs.pop('tau', 100)
+            ###########
+            cutoff = kwargs.pop('cutoff', 0.1)
+            ###########
+            
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
@@ -165,6 +169,10 @@ class PP_GLM():
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
+            
+            ###########
+            X_refractory = np.maximum(X_refractory, cutoff) - cutoff
+            ###########
             
             pillow_basis = make_pillow_basis(**kwargs)
             X_coupling = conv(input_to_couple, pillow_basis, npadding=self.npadding)
