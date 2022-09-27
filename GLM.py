@@ -465,6 +465,8 @@ class PP_GLM():
             self.test_model.output = self.target[:,test_trials]
         else:
             raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
+        if self.npadding is not None:
+                self.test_model.output = self.test_model.output[self.npadding:, :]
         for i_effect, effect_type in enumerate(self.effect_type_list):
             raw_input = self.raw_input_list[i_effect]
             kwargs = self.kwargs_list[i_effect]
