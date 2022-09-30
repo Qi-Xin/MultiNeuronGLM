@@ -224,7 +224,7 @@ class PP_GLM():
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
-            self.effect_list.append(X_refractory)
+            self.effect_list.append(X_refractory**2)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
             
@@ -450,6 +450,36 @@ class PP_GLM():
                 individual_info.append(total_info - temp_info)
             return individual_info
             
+    def get_filter_contribution(self, time_range=None, auto_pick=None):
+        if time_range is None:
+            time_range = [self.dataset.start_time, self.dataset.end_time]
+        time_range = [int(time*self.dataset.fps) for time in time_range]
+        result_output = self.get_filter_output(trial_wise=True, ci=False)
+        total_output = np.vstack((result_output)).T
+        total_output = total_output.sum(axis=1)
+        # print(total_output.shape)
+        if auto_pick is None:
+            total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
+            individual_info = []
+            for i, output in enumerate(result_output):
+                minus_one_output = copy.deepcopy(total_output)
+                minus_one_output = minus_one_output - output + np.mean(output)
+                temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
+                individual_info.append(total_info - temp_info)
+            return individual_info
+        else:
+            measure = auto_pick
+            individual_info = []
+            for i, output in enumerate(result_output):
+                minus_one_output = copy.deepcopy(total_output)
+                minus_one_output = minus_one_output - output + np.mean(output)
+                best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
+                # print(f"{i}, {best_time_range}")
+                total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
+                temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
+                individual_info.append(total_info - temp_info)
+            return individual_info
+        
     def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
                            select_trials=test_trials, 
@@ -1245,6 +1275,9 @@ def merge_dict(d1, d2):
 
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
     max_iter = 5
+    tau = 10
+    penalty = 1e-5
+    
     statistics_null = {}   # dict to return
     ROI_null = {}
     # Get permutated running and stationary index
@@ -1267,8 +1300,9 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
             # if i==j:
             #     continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
+        model.add_effect('interaction', target_probe, tau=tau, **coupling_filter_params)
         # model.fit(probe_list[i], verbose=False)
-        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter)
+        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter, penalty=penalty)
         filter_list = model.get_filter(ci=True)
         running_filter_temp[i,-1] = filter_list[0]
         k = 1
@@ -1288,8 +1322,9 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
             # if i==j:
             #     continue
             model.add_effect('coupling', probe_list[j], **coupling_filter_params)
+        model.add_effect('interaction', target_probe, tau=tau, **coupling_filter_params)
         # model.fit(probe_list[i], verbose=False)
-        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter)
+        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter, penalty=penalty)
         filter_list = model.get_filter(ci=True)
         stationary_filter_temp[i,-1] = filter_list[0]
         k = 1
