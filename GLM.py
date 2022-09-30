@@ -487,9 +487,9 @@ class PP_GLM():
                                   tol=1e-10, method='mine', max_spike=None, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
-        ALPHA = 0.0   # to smooth the optimization process
+        ALPHA = 0.5   # to smooth the optimization process
         BETA = 0.0   # to smooth the optimization process
-        THETA = 0.99   # Mean converge
+        THETA = 0.9   # Mean converge
 
         # Find the effect index that should be warpped
         i_effect = [i_effect for i_effect,effect_type in enumerate(self.effect_type_list) 
@@ -524,13 +524,11 @@ class PP_GLM():
                 self.shifts[:,1] = BETA*self.shifts[:,1] + (1-BETA)*best_shift[:,1]
                 self.shifts[:,3] = BETA*self.shifts[:,3] + (1-BETA)*best_shift[:,3]
                 
-                self.shifts[:,0] = ALPHA*self.shifts[:,0] + (1-ALPHA)*best_shift[:,0]
-                self.shifts[:,2] = ALPHA*self.shifts[:,2] + (1-ALPHA)*best_shift[:,2]
+                # self.shifts[:,0] = ALPHA*self.shifts[:,0] + (1-ALPHA)*best_shift[:,0]
+                # self.shifts[:,2] = ALPHA*self.shifts[:,2] + (1-ALPHA)*best_shift[:,2]
                 
-                # self.shifts[:,0] = self.shifts[:,1].mean()
-                # self.shifts[:,2] = self.shifts[:,3].mean()
-                # self.shifts = BETA*self.shifts + (1-BETA)*best_shift
-                # self.shifts = best_shift
+                self.shifts[:,0] = self.shifts[:,1].mean()
+                self.shifts[:,2] = self.shifts[:,3].mean()
             
             self.shifts[:,1] = (self.shifts[:,1] - self.shifts[:,0])*THETA + self.shifts[:,0]
             self.shifts[:,3] = (self.shifts[:,3] - self.shifts[:,2])*THETA + self.shifts[:,2]
