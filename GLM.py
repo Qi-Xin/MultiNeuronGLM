@@ -214,6 +214,7 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',100)
+            order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
@@ -224,7 +225,7 @@ class PP_GLM():
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
-            self.effect_list.append(X_refractory**2)
+            self.effect_list.append(X_refractory**order)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
             
