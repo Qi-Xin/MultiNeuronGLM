@@ -237,6 +237,21 @@ class PP_GLM():
             self.basis_list.append(np.diag(np.ones(self.ntrial)))
             self.basis_name.append(effect_type)
 
+        elif effect_type == 'condition_coef':
+            condition_list = self.dataset.presentation_table['stimulus_condition_id']
+            condition_ids_np = np.array(condition_ids)
+
+            X_condition_coef = np.zeros((self.nt*self.ntrial, len(self.condition_ids)))
+            for itrial in range(self.ntrial):
+                trial = self.dataset.spike_train.columns[itrial]
+                current_condition = condition_list.loc[trial]
+                icondition = np.where(condition_ids_np==current_condition)[0][0]
+                X_condition_coef[(itrial*self.nt):((itrial+1)*self.nt), icondition] = 1
+            X_condition_coef = X_condition_coef[:, X_condition_coef.sum(axis=0)!=0]
+            self.effect_list.append(X_condition_coef)
+            self.basis_list.append(np.diag( len(self.condition_ids) ))
+            self.basis_name.append(effect_type)
+            
         elif effect_type == 'twoway_coupling':
             if type(raw_input) == str:
                 # print(f"Assuming raw inputs are spike trains from {raw_input}")
