@@ -93,6 +93,7 @@ class PP_GLM():
                         'dense_coupling',
                         'refractory',
                         'trial_coef', 
+                        'condition_coef', 
                         'interaction', 
                         'interaction2', 
                         'interaction3'],  "Not supported effect_type!"
@@ -239,8 +240,7 @@ class PP_GLM():
 
         elif effect_type == 'condition_coef':
             condition_list = self.dataset.presentation_table['stimulus_condition_id']
-            condition_ids_np = np.array(condition_ids)
-
+            condition_ids_np = np.array(self.condition_ids)
             X_condition_coef = np.zeros((self.nt*self.ntrial, len(self.condition_ids)))
             for itrial in range(self.ntrial):
                 trial = self.dataset.spike_train.columns[itrial]
@@ -249,7 +249,7 @@ class PP_GLM():
                 X_condition_coef[(itrial*self.nt):((itrial+1)*self.nt), icondition] = 1
             X_condition_coef = X_condition_coef[:, X_condition_coef.sum(axis=0)!=0]
             self.effect_list.append(X_condition_coef)
-            self.basis_list.append(np.diag( len(self.condition_ids) ))
+            self.basis_list.append(np.diag( np.ones(X_condition_coef.shape[1]) ))
             self.basis_name.append(effect_type)
             
         elif effect_type == 'twoway_coupling':
