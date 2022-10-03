@@ -92,6 +92,7 @@ class PP_GLM():
                         'varying_linear',
                         'dense_coupling',
                         'refractory',
+                        'refractory_box',
                         'trial_coef', 
                         'condition_coef', 
                         'interaction', 
@@ -223,6 +224,29 @@ class PP_GLM():
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
             
+            refractory_spikes = refractory_spikes[-self.nt:, :]
+            X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
+            X_refractory /= tau
+            self.effect_list.append(X_refractory**order)
+            self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
+            self.basis_name.append(effect_type)
+            
+        elif effect_type == 'refractory_box':
+            if type(raw_input) == str:
+                # print(f"Assuming raw inputs are spike trains from {raw_input}")
+                input_to_couple = utils.pooling_pop(self.membership, self.condition_ids, 
+                                                    self.dataset, raw_input, 0, use_all=use_all)
+                input_to_couple = input_to_couple[:,self.select_trials]
+            elif type(raw_input) == np.ndarray:
+                input_to_couple = raw_input
+            else:
+                raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
+            tau = kwargs.pop('tau',100)
+            tau = int(np.ceil(tau))
+            order = kwargs.pop('order', 2)
+            refractory_spikes = np.zeros_like(input_to_couple)
+            for t in range(tau, input_to_couple.shape[0]):
+                refractory_spikes[t, :] = input_to_couple[t-tau:t, :].sum(axis=0)
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
