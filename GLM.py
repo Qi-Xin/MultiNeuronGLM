@@ -80,8 +80,9 @@ class PP_GLM():
         self.raw_input_list = []
         self.kwargs_list = []
         self.target = None
+        self.no_penalty = []
 
-    def add_effect(self, effect_type, raw_input=None, use_all=False, **kwargs):
+    def add_effect(self, effect_type, raw_input=None, use_all=False, apply_no_penalty=False, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
                         'inhomogeneous_baseline', 
                         'coupling', 
@@ -336,10 +337,12 @@ class PP_GLM():
             self.effect_list.append(X_varying_linear)
             self.basis_list.append(coef_basis)
             self.basis_name.append(effect_type)
-        
-        elif effect_type == 'history':
-            raise ValueError("Unfinish!")
     
+        # if apply no penalty to this effect
+        if apply_no_penalty == True:
+            no_penalty_start = np.sum([self.basis_list[i].shape[1] for i in range(len(self.basis_list)-1)])
+            no_penalty_end = np.sum([self.basis_list[i].shape[1] for i in range(len(self.basis_list))])
+            self.no_penalty.append(np.arange(int(no_penalty_start), int(no_penalty_end)))
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
         if self.target is None:
@@ -359,7 +362,7 @@ class PP_GLM():
         
         self.predictors = np.hstack(self.effect_list)
         if penalty != 0 or method=='mine':
-            self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty)
+            self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
         elif method=='logit':
             success_fail, max_spike = get_success_fail(self.response, max_spike=max_spike, return_max_spike=True)
             self.results = sm.GLM(success_fail, self.predictors, family=sm.families.Binomial()).fit()
@@ -1224,7 +1227,8 @@ def poisson_regression(
         X,
         L2_pen=1e-6,
         max_num_iterations=100, 
-        tol=1e-8):
+        tol=1e-8,
+        no_penalty=[]):
     """Fit Poisson GLM.
 
     The coefficients beta is fitted using Newton's method.
@@ -1242,6 +1246,8 @@ def poisson_regression(
         # The first column is the constant baseline, set the constant to mean firing rate. 
         beta[0] = np.log(Y.sum()/len(Y))
         penalty_vec[0] = 0
+    for no_penalty_term in no_penalty:
+        penalty_vec[no_penalty_term] = 0
     penalty_matrix = np.diag(penalty_vec.squeeze())
     log_lmbda_hat = (X @ beta)
 
@@ -1314,85 +1320,112 @@ def merge_dict(d1, d2):
     return d
 
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
-    max_iter = 5
+    penalty = 3e-1
     tau = 10
-    penalty = 1e-5
-    
-    statistics_null = {}   # dict to return
-    ROI_null = {}
-    # Get permutated running and stationary index
-    fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
-    np.random.shuffle(fake_running_trial_index)  
-        # don't need to assign shuffled list, it's changed automatically. 
-    fake_stationary_trial_index = np.logical_not(fake_running_trial_index)
-    
-    running_filter_temp = {}
-    stationary_filter_temp = {}
+    order = 2
+    num_basis_baseline = 30
+    max_iter = 10
+    coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
+    use_all = [False, False, False, False, False, False]
 
-    for i, target_probe in enumerate(probe_list):
-        select_trials = fake_running_trial_index
+    ################ No need to change below
+    probe_list = V1.selected_probes
+    running_filter = {}
+    stationary_filter = {}
+    running_output = {}
+    stationary_output = {}
+    ROI_filter = {}
+    statistics_filter = {}
+    ROI_output = {}
+    statistics_output = {}
+    running_model_list = []
+    stationary_model_list = []
+
+    for i, target_probe in tqdm(enumerate(probe_list)):
+        select_trials = V1.running_trial_index
         model = PP_GLM(dataset=V1, 
-                           select_trials=select_trials, 
-                           membership=membership, 
-                           condition_ids=condition_ids)
-        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
+                        select_trials=select_trials, 
+                        membership=membership, 
+                        condition_ids=condition_ids)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, apply_no_penalty=True)
         for j, input_probe in enumerate(probe_list):
-            # if i==j:
-            #     continue
-            model.add_effect('coupling', probe_list[j], **coupling_filter_params)
-        model.add_effect('interaction', target_probe, tau=tau, **coupling_filter_params)
-        # model.fit(probe_list[i], verbose=False)
-        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter, penalty=penalty)
+            model.add_effect('coupling', probe_list[j], apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('refractory', target_probe, order=order, tau=tau, apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('trial_coef')
+        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        running_model_list.append(model)
         filter_list = model.get_filter(ci=True)
-        running_filter_temp[i,-1] = filter_list[0]
+        running_filter[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
-            # if i==j:
-            #     continue
-            running_filter_temp[i,j] = filter_list[k]
+    #         if i==j:
+    #             continue
+            running_filter[i,j] = filter_list[k]
             k += 1
-
-        select_trials = fake_stationary_trial_index
-        model = PP_GLM(dataset=V1, 
-                           select_trials=select_trials, 
-                           membership=membership, 
-                           condition_ids=condition_ids)
-        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, add_constant_basis=False)
-        for j, input_probe in enumerate(probe_list):
-            # if i==j:
-            #     continue
-            model.add_effect('coupling', probe_list[j], **coupling_filter_params)
-        model.add_effect('interaction', target_probe, tau=tau, **coupling_filter_params)
-        # model.fit(probe_list[i], verbose=False)
-        model.fit_time_warping_baseline(probe_list[i], verbose=False, max_iter=max_iter, penalty=penalty)
-        filter_list = model.get_filter(ci=True)
-        stationary_filter_temp[i,-1] = filter_list[0]
+        filter_list = model.get_filter_output(ci=True)
+        running_output[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
-            # if i==j:
-            #     continue
-            stationary_filter_temp[i,j] = filter_list[k]
+    #         if i==j:
+    #             continue
+            running_output[i,j] = filter_list[k]
             k += 1
-
-        filter_index = i,-1
-        function1 = np.exp( running_filter_temp[filter_index][0] )
-        function2 = np.exp( stationary_filter_temp[filter_index][0] )
-        if filter_index not in statistics_null.keys():
-            statistics_null[filter_index] = []
-        ROI_null[filter_index] = get_ROI(function1, function2)
-        statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
         
+        
+        select_trials = V1.stationary_trial_index
+        model = PP_GLM(dataset=V1, 
+                        select_trials=select_trials, 
+                        membership=membership, 
+                        condition_ids=condition_ids)
+        model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, apply_no_penalty=True)
         for j, input_probe in enumerate(probe_list):
-            # if i==j:
-            #     continue
+            model.add_effect('coupling', probe_list[j],apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('refractory', target_probe, order=order, tau=tau,apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('trial_coef')
+        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        stationary_model_list.append(model)
+        filter_list = model.get_filter(ci=True)
+        stationary_filter[i,-1] = filter_list[0]
+        k = 1
+        for j, input_probe in enumerate(probe_list):
+    #         if i==j:
+    #             continue
+            stationary_filter[i,j] = filter_list[k]
+            k += 1
+        filter_list = model.get_filter_output(ci=True)
+        stationary_output[i,-1] = filter_list[0]
+        k = 1
+        for j, input_probe in enumerate(probe_list):
+    #         if i==j:
+    #             continue
+            stationary_output[i,j] = filter_list[k]
+            k += 1
+        
+        # for effect filter
+        filter_index = i,-1
+        function1 = np.exp( running_filter[filter_index][0] )
+        function2 = np.exp( stationary_filter[filter_index][0] )
+        ROI_filter[filter_index] = get_ROI(function1, function2)
+        statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+        for j, input_probe in enumerate(probe_list):
             filter_index = i,j
-            function1 = running_filter_temp[filter_index][0]
-            function2 = stationary_filter_temp[filter_index][0]
-            if filter_index not in statistics_null.keys():
-                statistics_null[filter_index] = []
-            ROI_null[filter_index] = get_ROI(function1, function2)
-            statistics_null[filter_index].append( get_excursion_test(function1, function2, ROI_null[filter_index]) )
-    return statistics_null
+            function1 = running_filter[filter_index][0]
+            function2 = stationary_filter[filter_index][0]
+            ROI_filter[filter_index] = get_ROI(function1, function2)
+            statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+            
+        # for effect output
+        filter_index = i,-1
+        function1 = np.exp( running_output[filter_index][0] )
+        function2 = np.exp( stationary_output[filter_index][0] )
+        ROI_output[filter_index] = get_ROI(function1, function2)
+        statistics_output[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+        for j, input_probe in enumerate(probe_list):
+            filter_index = i,j
+            function1 = running_output[filter_index][0]
+            function2 = stationary_output[filter_index][0]
+            ROI_output[filter_index] = get_ROI(function1, function2)
+            statistics_output[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
 
 # Multiprocess version of null distribution
 
@@ -1419,8 +1452,8 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
     import multiprocessing
     import os
     # PROCESSES = os.cpu_count()-2
-    PROCESSES = 5
-    PARALLEL_BATCH_SIZE = 50
+    PROCESSES = 7
+    PARALLEL_BATCH_SIZE = 7
     nbatch = int(np.ceil(n_null/PARALLEL_BATCH_SIZE))
     print(f"Starting multiprocessing on {sys.platform}. \nCores={PROCESSES}. \nBatch size={PARALLEL_BATCH_SIZE}")
     if sys.platform == 'linux':
