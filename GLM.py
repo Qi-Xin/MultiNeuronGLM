@@ -1303,7 +1303,7 @@ def get_excursion_test(function1, function2, ROI_list):
     for i, ROI in enumerate(ROI_list):
         diff = function1 - function2
         stats_list.append( np.abs( np.sum(diff[ROI]) ) )
-    return np.max(stats_list)
+    return [np.max(stats_list)]
 
 def get_ROI(function1, function2):
     diff = np.abs(function1 - function2)
@@ -1313,7 +1313,6 @@ def get_ROI(function1, function2):
 
 def merge_dict(d1, d2):
     # d1 is the mother, d2 is the one to add to d1
-    ds = [d1, d2]
     d = {}
     for k in d1.keys():
         d[k] = d1[k] + d2[k]
@@ -1326,9 +1325,12 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     num_basis_baseline = 30
     max_iter = 10
     coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
-    use_all = [False, False, False, False, False, False]
 
     ################ No need to change below
+    fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
+    np.random.shuffle(fake_running_trial_index)  # don't need to assign shuffled list, it's changed automatically. 
+    fake_stationary_trial_index = np.logical_not(fake_running_trial_index)
+    
     probe_list = V1.selected_probes
     running_filter = {}
     stationary_filter = {}
@@ -1341,8 +1343,8 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     running_model_list = []
     stationary_model_list = []
 
-    for i, target_probe in tqdm(enumerate(probe_list)):
-        select_trials = V1.running_trial_index
+    for i, target_probe in enumerate(probe_list):
+        select_trials = fake_running_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
@@ -1371,8 +1373,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
             running_output[i,j] = filter_list[k]
             k += 1
         
-        
-        select_trials = V1.stationary_trial_index
+        select_trials = fake_stationary_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
@@ -1406,27 +1407,27 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         function1 = np.exp( running_filter[filter_index][0] )
         function2 = np.exp( stationary_filter[filter_index][0] )
         ROI_filter[filter_index] = get_ROI(function1, function2)
-        statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+        statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_filter[filter_index][0]
             function2 = stationary_filter[filter_index][0]
             ROI_filter[filter_index] = get_ROI(function1, function2)
-            statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+            statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
             
         # for effect output
         filter_index = i,-1
         function1 = np.exp( running_output[filter_index][0] )
         function2 = np.exp( stationary_output[filter_index][0] )
         ROI_output[filter_index] = get_ROI(function1, function2)
-        statistics_output[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
+        statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_output[filter_index][0]
             function2 = stationary_output[filter_index][0]
             ROI_output[filter_index] = get_ROI(function1, function2)
-            statistics_output[filter_index] = get_excursion_test(function1, function2, ROI[filter_index])
-
+            statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
+    return statistics_filter, statistics_output
 # Multiprocess version of null distribution
 
 def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
@@ -1452,12 +1453,12 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
     import multiprocessing
     import os
     # PROCESSES = os.cpu_count()-2
-    PROCESSES = 7
-    PARALLEL_BATCH_SIZE = 7
+    PROCESSES = 5
+    PARALLEL_BATCH_SIZE = 5
     nbatch = int(np.ceil(n_null/PARALLEL_BATCH_SIZE))
     print(f"Starting multiprocessing on {sys.platform}. \nCores={PROCESSES}. \nBatch size={PARALLEL_BATCH_SIZE}")
     if sys.platform == 'linux':
-        with tqdm(total=n_null) as pbar:              
+        with tqdm(total=n_null) as pbar:
             for ibatch in range(nbatch):
                 with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
                     results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, 
@@ -1466,16 +1467,18 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                     pool.close()
                     if ibatch == 0:
                         # The first batch the first return result will be the very first "statistics_null"
-                        statistics_null = results[0].get()
+                        statistics_filter_null, statistics_output_null = results[0].get()
                         pbar.update(1)
                         for result in results[1:]:
-                            statistics_null_new = result.get()
-                            statistics_null = merge_dict(statistics_null, statistics_null_new)
+                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
+                            statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
                             pbar.update(1)
                     else:
                         for result in results:
-                            statistics_null_new = result.get()
-                            statistics_null = merge_dict(statistics_null, statistics_null_new)
+                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
+                            statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
                             pbar.update(1)
                             
     else:
@@ -1490,7 +1493,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
             for result in tqdm(results[1:]):
                 statistics_null_new = result.get()
                 statistics_null = merge_dict(statistics_null, statistics_null_new)
-    return statistics_null
+    return statistics_filter_null, statistics_output_null
 
 
 
