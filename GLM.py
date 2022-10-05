@@ -425,43 +425,42 @@ class PP_GLM():
         ### result_output[2] contains the information for the second coupling filters
         ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
         ### if ci==False, result_output[2] is the filter
-        effect_id_list = np.arange(len(self.effect_type_list))
+        effect_id_list = np.arange(len(self.basis_name))
         result_output = []
         for effect_id in effect_id_list:
-            if self.effect_type_list[effect_id] in ["inhomogeneous_baseline","coupling"]:
-                start_col = 0
-                for previous_id in range(effect_id):
-                    start_col += (self.effect_list[previous_id]).shape[1]
-                nbasis = (self.effect_list[effect_id]).shape[1]
-                end_col = start_col + nbasis
-                
-                # estimated effect output
+            start_col = 0
+            for previous_id in range(effect_id):
+                start_col += (self.effect_list[previous_id]).shape[1]
+            nbasis = (self.effect_list[effect_id]).shape[1]
+            end_col = start_col + nbasis
+
+            # estimated effect output
+            coef = self.results.params[start_col:end_col]
+            if self.basis_name[effect_id] in ["inhomogeneous_baseline"]:
+                predicters_temp = self.basis_list[effect_id]
+                if trial_wise:
+                    predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
                 coef = self.results.params[start_col:end_col]
-                if self.effect_type_list[effect_id] == "inhomogeneous_baseline":
-                    predicters_temp = self.basis_list[effect_id]
-                    if trial_wise:
-                        predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
-                    coef = self.results.params[start_col:end_col]
-                    y = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                    se = self.results.bse[start_col:end_col]
-                    one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
-                    if trial_wise:
-                        y_all_trial = y
-                elif self.effect_type_list[effect_id] == "coupling":
-                    predicters_temp = self.effect_list[effect_id]
-                    coef = self.results.params[start_col:end_col]
-                    y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                    y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
-                    y = y_mat.mean(axis=1)
-                    # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
-                    one_sigma_ci = y_mat.std(axis=1)
-                if ci:
-                    result_output.append([y,one_sigma_ci])
+                y = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                se = self.results.bse[start_col:end_col]
+                one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+                if trial_wise:
+                    y_all_trial = y
+            else:
+                predicters_temp = self.effect_list[effect_id]
+                coef = self.results.params[start_col:end_col]
+                y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
+                y = y_mat.mean(axis=1)
+                # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
+                one_sigma_ci = y_mat.std(axis=1)
+            if ci:
+                result_output.append([y,one_sigma_ci])
+            else:
+                if trial_wise:
+                    result_output.append(y_all_trial)
                 else:
-                    if trial_wise:
-                        result_output.append(y_all_trial)
-                    else:
-                        result_output.append(y)
+                    result_output.append(y)
         return result_output
     
     def get_filter_contribution(self, time_range=None, auto_pick=None):
