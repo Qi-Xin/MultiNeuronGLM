@@ -446,7 +446,7 @@ class PP_GLM():
                 one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
                 if trial_wise:
                     y_all_trial = y
-            else:
+            elif self.basis_name[effect_id] == "coupling":
                 predicters_temp = self.effect_list[effect_id]
                 coef = self.results.params[start_col:end_col]
                 y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
@@ -454,6 +454,8 @@ class PP_GLM():
                 y = y_mat.mean(axis=1)
                 # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
                 one_sigma_ci = y_mat.std(axis=1)
+            else:
+                pass
             if ci:
                 result_output.append([y,one_sigma_ci])
             else:
@@ -468,36 +470,6 @@ class PP_GLM():
             time_range = [self.dataset.start_time, self.dataset.end_time]
         time_range = [int(time*self.dataset.fps) for time in time_range]
         result_output = self.get_filter_output(ci=False)
-        total_output = np.vstack((result_output)).T
-        total_output = total_output.sum(axis=1)
-        # print(total_output.shape)
-        if auto_pick is None:
-            total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
-            individual_info = []
-            for i, output in enumerate(result_output):
-                minus_one_output = copy.deepcopy(total_output)
-                minus_one_output = minus_one_output - output + np.mean(output)
-                temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
-                individual_info.append(total_info - temp_info)
-            return individual_info
-        else:
-            measure = auto_pick
-            individual_info = []
-            for i, output in enumerate(result_output):
-                minus_one_output = copy.deepcopy(total_output)
-                minus_one_output = minus_one_output - output + np.mean(output)
-                best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
-                # print(f"{i}, {best_time_range}")
-                total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
-                temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
-                individual_info.append(total_info - temp_info)
-            return individual_info
-            
-    def get_filter_contribution(self, time_range=None, auto_pick=None):
-        if time_range is None:
-            time_range = [self.dataset.start_time, self.dataset.end_time]
-        time_range = [int(time*self.dataset.fps) for time in time_range]
-        result_output = self.get_filter_output(trial_wise=True, ci=False)
         total_output = np.vstack((result_output)).T
         total_output = total_output.sum(axis=1)
         # print(total_output.shape)
@@ -1468,6 +1440,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                     if ibatch == 0:
                         # The first batch the first return result will be the very first "statistics_null"
                         statistics_filter_null, statistics_output_null = results[0].get()
+                        print(statistics_filter_null, statistics_output_null)
                         pbar.update(1)
                         for result in results[1:]:
                             statistics_filter_null_new, statistics_output_null_new = result.get()
