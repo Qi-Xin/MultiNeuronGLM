@@ -425,44 +425,43 @@ class PP_GLM():
         ### result_output[2] contains the information for the second coupling filters
         ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
         ### if ci==False, result_output[2] is the filter
-        effect_id_list = np.arange(len(self.basis_name))
+        effect_id_list = np.arange(len(self.effect_type_list))
         result_output = []
         for effect_id in effect_id_list:
-            start_col = 0
-            for previous_id in range(effect_id):
-                start_col += (self.effect_list[previous_id]).shape[1]
-            nbasis = (self.effect_list[effect_id]).shape[1]
-            end_col = start_col + nbasis
-            
-            # estimated effect output
-            coef = self.results.params[start_col:end_col]
-            if self.basis_name[effect_id] == "inhomogeneous_baseline":
-                predicters_temp = self.basis_list[effect_id]
-                if trial_wise:
-                    predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
+            if self.effect_type_list[effect_id] in ["inhomogeneous_baseline","coupling"]:
+                start_col = 0
+                for previous_id in range(effect_id):
+                    start_col += (self.effect_list[previous_id]).shape[1]
+                nbasis = (self.effect_list[effect_id]).shape[1]
+                end_col = start_col + nbasis
+                
+                # estimated effect output
                 coef = self.results.params[start_col:end_col]
-                y = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                se = self.results.bse[start_col:end_col]
-                one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
-                if trial_wise:
-                    y_all_trial = y
-            elif self.basis_name[effect_id] == "coupling":
-                predicters_temp = self.effect_list[effect_id]
-                coef = self.results.params[start_col:end_col]
-                y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
-                y = y_mat.mean(axis=1)
-                # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
-                one_sigma_ci = y_mat.std(axis=1)
-            else:
-                pass
-            if ci:
-                result_output.append([y,one_sigma_ci])
-            else:
-                if trial_wise:
-                    result_output.append(y_all_trial)
+                if self.effect_type_list[effect_id] == "inhomogeneous_baseline":
+                    predicters_temp = self.basis_list[effect_id]
+                    if trial_wise:
+                        predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
+                    coef = self.results.params[start_col:end_col]
+                    y = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                    se = self.results.bse[start_col:end_col]
+                    one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
+                    if trial_wise:
+                        y_all_trial = y
+                elif self.effect_type_list[effect_id] == "coupling":
+                    predicters_temp = self.effect_list[effect_id]
+                    coef = self.results.params[start_col:end_col]
+                    y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                    y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
+                    y = y_mat.mean(axis=1)
+                    # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
+                    one_sigma_ci = y_mat.std(axis=1)
+                if ci:
+                    result_output.append([y,one_sigma_ci])
                 else:
-                    result_output.append(y)
+                    if trial_wise:
+                        result_output.append(y_all_trial)
+                    else:
+                        result_output.append(y)
         return result_output
     
     def get_filter_contribution(self, time_range=None, auto_pick=None):
@@ -1274,7 +1273,7 @@ def get_excursion_test(function1, function2, ROI_list):
     stats_list = []
     for i, ROI in enumerate(ROI_list):
         diff = function1 - function2
-        stats_list.append( np.abs( np.sum(diff[ROI]) ) )
+        stats_list.append( np.sum( np.abs(diff[ROI]) ) )
     return [np.max(stats_list)]
 
 def get_ROI(function1, function2):
@@ -1328,7 +1327,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         model.add_effect('trial_coef')
         model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
         running_model_list.append(model)
-        filter_list = model.get_filter(ci=True)
+        filter_list = model.get_filter(ci=False)
         running_filter[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
@@ -1336,7 +1335,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     #             continue
             running_filter[i,j] = filter_list[k]
             k += 1
-        filter_list = model.get_filter_output(ci=True)
+        filter_list = model.get_filter_output(ci=False)
         running_output[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
@@ -1357,7 +1356,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         model.add_effect('trial_coef')
         model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
         stationary_model_list.append(model)
-        filter_list = model.get_filter(ci=True)
+        filter_list = model.get_filter(ci=False)
         stationary_filter[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
@@ -1365,7 +1364,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     #             continue
             stationary_filter[i,j] = filter_list[k]
             k += 1
-        filter_list = model.get_filter_output(ci=True)
+        filter_list = model.get_filter_output(ci=False)
         stationary_output[i,-1] = filter_list[0]
         k = 1
         for j, input_probe in enumerate(probe_list):
@@ -1376,27 +1375,27 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         
         # for effect filter
         filter_index = i,-1
-        function1 = np.exp( running_filter[filter_index][0] )
-        function2 = np.exp( stationary_filter[filter_index][0] )
+        function1 = np.exp( running_filter[filter_index] )
+        function2 = np.exp( stationary_filter[filter_index] )
         ROI_filter[filter_index] = get_ROI(function1, function2)
         statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
-            function1 = running_filter[filter_index][0]
-            function2 = stationary_filter[filter_index][0]
+            function1 = running_filter[filter_index]
+            function2 = stationary_filter[filter_index]
             ROI_filter[filter_index] = get_ROI(function1, function2)
             statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
             
         # for effect output
         filter_index = i,-1
-        function1 = np.exp( running_output[filter_index][0] )
-        function2 = np.exp( stationary_output[filter_index][0] )
+        function1 = np.exp( running_output[filter_index] )
+        function2 = np.exp( stationary_output[filter_index] )
         ROI_output[filter_index] = get_ROI(function1, function2)
         statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
-            function1 = running_output[filter_index][0]
-            function2 = stationary_output[filter_index][0]
+            function1 = running_output[filter_index]
+            function2 = stationary_output[filter_index]
             ROI_output[filter_index] = get_ROI(function1, function2)
             statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
     return statistics_filter, statistics_output
@@ -1440,7 +1439,6 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                     if ibatch == 0:
                         # The first batch the first return result will be the very first "statistics_null"
                         statistics_filter_null, statistics_output_null = results[0].get()
-                        print(statistics_filter_null, statistics_output_null)
                         pbar.update(1)
                         for result in results[1:]:
                             statistics_filter_null_new, statistics_output_null_new = result.get()
