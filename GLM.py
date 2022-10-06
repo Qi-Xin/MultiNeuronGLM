@@ -475,22 +475,56 @@ class PP_GLM():
             total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
             individual_info = []
             for i, output in enumerate(result_output):
-                minus_one_output = copy.deepcopy(total_output)
-                minus_one_output = minus_one_output - output + np.mean(output)
-                temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
-                individual_info.append(total_info - temp_info)
+                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+                    minus_one_output = copy.deepcopy(total_output)
+                    minus_one_output = minus_one_output - output + np.mean(output)
+                    temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
+                    individual_info.append(total_info - temp_info)
             return individual_info
         else:
             measure = auto_pick
             individual_info = []
             for i, output in enumerate(result_output):
-                minus_one_output = copy.deepcopy(total_output)
-                minus_one_output = minus_one_output - output + np.mean(output)
-                best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
-                # print(f"{i}, {best_time_range}")
-                total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
-                temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
-                individual_info.append(total_info - temp_info)
+                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+                    minus_one_output = copy.deepcopy(total_output)
+                    minus_one_output = minus_one_output - output + np.mean(output)
+                    best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
+                    # print(f"{i}, {best_time_range}")
+                    total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
+                    temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
+                    individual_info.append(total_info - temp_info)
+            return individual_info
+
+    def get_filter_contribution_trial_wise(self, time_range=None, auto_pick=None):
+        if time_range is None:
+            time_range = [self.dataset.start_time, self.dataset.end_time]
+        time_range = [int(time*self.dataset.fps) for time in time_range]
+        result_output = self.get_filter_output(trial_wise=True, ci=False)
+        total_output = np.vstack((result_output)).T
+        total_output = total_output.sum(axis=1)
+        # print(total_output.shape)
+        if auto_pick is None:
+            total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
+            individual_info = []
+            for i, output in enumerate(result_output):
+                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+                    minus_one_output = copy.deepcopy(total_output)
+                    minus_one_output = minus_one_output - output + np.mean(output)
+                    temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
+                    individual_info.append(total_info - temp_info)
+            return individual_info
+        else:
+            measure = auto_pick
+            individual_info = []
+            for i, output in enumerate(result_output):
+                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+                    minus_one_output = copy.deepcopy(total_output)
+                    minus_one_output = minus_one_output - output + np.mean(output)
+                    best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
+                    # print(f"{i}, {best_time_range}")
+                    total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
+                    temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
+                    individual_info.append(total_info - temp_info)
             return individual_info
         
     def test(self, test_trials, use_all=False, verbose=False):
@@ -588,6 +622,7 @@ class PP_GLM():
                 # break
             nll_old = nll
             
+        self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
         # Finished fitting
         if iter == max_iter:
             print("Maximum iteration reach!")
@@ -862,10 +897,11 @@ def get_three_measure_entire_length(f, exp=False):
     cdf = np.cumsum(pdf)
     pdfUniform = 1/len(pdf) * np.ones(len(pdf))
     cdfUniform = np.cumsum(pdfUniform)
-    KL = rel_entr(pdf, pdfUniform).sum()
     # KL = rel_entr(pdf, pdfUniform).sum()
+    KL = 0
     KS = np.max(np.abs(cdf-cdfUniform))
-    Wasser = np.sum(np.abs(cdf-cdfUniform)*1/len(pdf))
+    # Wasser = np.sum(np.abs(cdf-cdfUniform)*1/len(pdf))
+    Wasser = 0
     return np.array([KL, KS, Wasser])
 
 def get_measure_func(measure, f):
