@@ -21,6 +21,7 @@ import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
 import scipy.signal
+from scipy import linalg
 from sklearn.linear_model import PoissonRegressor
 import sklearn.model_selection
 from tqdm import tqdm
@@ -499,25 +500,46 @@ class PP_GLM():
         if time_range is None:
             time_range = [self.dataset.start_time, self.dataset.end_time]
         time_range = [int(time*self.dataset.fps) for time in time_range]
-        result_output = self.get_filter_output(trial_wise=True, ci=False)
-        total_output = np.vstack((result_output)).T
-        total_output = total_output.sum(axis=1)
+        raw_result_output_list = self.get_filter_output(trial_wise=True, ci=False)
+        result_output = []
+        for ieffect, raw_result_output in enumerate(raw_result_output_list):
+            if self.effect_type_list[ieffect]=='inhomogeneous_baseline': 
+                result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+                ibaseline = ieffect
+            elif self.effect_type_list[ieffect]=='coupling':
+                result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+                if utils.PROBE_CORRESPONDING_INVERSE[self.basis_name[ieffect][-2:]] == self.target:
+                    iselfeffect = ieffect
+            elif self.effect_type_list[ieffect]=='trial_coef':
+                # add refractory to itself's own effect
+                result_output[ibaseline] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+            elif self.effect_type_list[ieffect]=='refractory':
+                result_output[iselfeffect] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+            else:
+                raise ValueError("only support trial_coef and refractory in addition to inhomogeneous_baseline and coupling!")
+        total_output_all = np.stack(result_output, axis=2)
+        total_output_all = total_output_all.sum(axis=2)
         # print(total_output.shape)
-        if auto_pick is None:
-            total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
-            individual_info = []
-            for i, output in enumerate(result_output):
-                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
-                    minus_one_output = copy.deepcopy(total_output)
-                    minus_one_output = minus_one_output - output + np.mean(output)
-                    temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
-                    individual_info.append(total_info - temp_info)
-            return individual_info
-        else:
-            measure = auto_pick
-            individual_info = []
-            for i, output in enumerate(result_output):
-                if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+        # print(total_output_all.shape)
+        individual_info_all = []
+        for itrial in tqdm(range(total_output_all.shape[1])):
+            total_output = total_output_all[:, itrial]
+            if auto_pick is None:
+                total_info = get_three_measure_entire_length(total_output[time_range[0]:time_range[1]], exp=True)
+                individual_info = []
+                for i, output in enumerate(result_output):
+                    output = output[:, itrial]
+                    if self.effect_type_list[i] in ['inhomogeneous_baseline', 'coupling']:
+                        minus_one_output = copy.deepcopy(total_output)
+                        minus_one_output = minus_one_output - output + np.mean(output)
+                        temp_info = get_three_measure_entire_length(minus_one_output[time_range[0]:time_range[1]], exp=True)
+                        individual_info.append(total_info - temp_info)
+                individual_info_all.append(individual_info) 
+            else:
+                measure = auto_pick
+                individual_info = []
+                for i, output in enumerate(result_output):
+                    output = output[:, itrial]
                     minus_one_output = copy.deepcopy(total_output)
                     minus_one_output = minus_one_output - output + np.mean(output)
                     best_time_range = get_best_time_range(total_output, minus_one_output, measure, time_range)
@@ -525,7 +547,49 @@ class PP_GLM():
                     total_info = get_three_measure_entire_length(total_output[best_time_range[0]:best_time_range[1]], exp=True)
                     temp_info = get_three_measure_entire_length(minus_one_output[best_time_range[0]:best_time_range[1]], exp=True)
                     individual_info.append(total_info - temp_info)
-            return individual_info
+                individual_info_all.append(individual_info) 
+        return np.array(individual_info_all)
+    
+    def get_filter_output_merge(self, trial_wise=False, ci=False):
+        if trial_wise:
+            result_output = []
+            raw_result_output_list = self.get_filter_output(trial_wise=True, ci=False)
+            for ieffect, raw_result_output in enumerate(raw_result_output_list):
+                if self.effect_type_list[ieffect]=='inhomogeneous_baseline': 
+                    result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+                    ibaseline = ieffect
+                elif self.effect_type_list[ieffect]=='coupling':
+                    result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+                    if utils.PROBE_CORRESPONDING_INVERSE[self.basis_name[ieffect][-2:]] == self.target:
+                        iselfeffect = ieffect
+                elif self.effect_type_list[ieffect]=='trial_coef':
+                    # add refractory to itself's own effect
+                    result_output[ibaseline] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+                elif self.effect_type_list[ieffect]=='refractory':
+                    result_output[iselfeffect] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+                else:
+                    raise ValueError("only support trial_coef and refractory in addition to inhomogeneous_baseline and coupling!")
+            return result_output
+        else:
+            raise ValueError("Unfinished!")
+            # result_output = []
+            # raw_result_output_list = self.get_filter_output(trial_wise=False, ci=False)
+            # for ieffect, raw_result_output in enumerate(raw_result_output_list):
+            #     if self.effect_type_list[ieffect]=='inhomogeneous_baseline': 
+            #         result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+            #         ibaseline = ieffect
+            #     elif self.effect_type_list[ieffect]=='coupling':
+            #         result_output.append( raw_result_output.reshape((self.nt, self.ntrial), order='F') )
+            #         if utils.PROBE_CORRESPONDING_INVERSE[self.basis_name[ieffect][-2:]] == self.target:
+            #             iselfeffect = ieffect
+            #     elif self.effect_type_list[ieffect]=='trial_coef':
+            #         # add refractory to itself's own effect
+            #         result_output[ibaseline] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+            #     elif self.effect_type_list[ieffect]=='refractory':
+            #         result_output[iselfeffect] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
+            #     else:
+            #         raise ValueError("only support trial_coef and refractory in addition to inhomogeneous_baseline and coupling!")
+            # return result_output
         
     def test(self, test_trials, use_all=False, verbose=False):
         self.test_model = PP_GLM(dataset=self.dataset, 
@@ -1516,3 +1580,67 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
         
     # To-do: simulation; 
     #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
+    
+
+def corr(C):
+    """
+    Returns the sample linear partial correlation coefficients between pairs of variables in C, controlling 
+    for the remaining variables in C.
+    Parameters
+    ----------
+    C : array-like, shape (n, p)
+        Array with the different variables. Each column of C is taken as a variable
+    Returns
+    -------
+    P : array-like, shape (p, p)
+        P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
+        for the remaining variables in C.
+    """
+    C = np.asarray(C)
+    p = C.shape[1]
+    P_corr = np.zeros((p, p), dtype=np.float)
+    for i in range(p):
+        P_corr[i, i] = 1
+        for j in range(i+1, p):
+            res_j = C[:, j]
+            res_i = C[:, i]
+            corr = scipy.stats.pearsonr(res_i, res_j)[0]
+            P_corr[i, j] = corr
+            P_corr[j, i] = corr
+    return P_corr
+
+
+def partial_corr(C):
+    """
+    Returns the sample linear partial correlation coefficients between pairs of variables in C, controlling 
+    for the remaining variables in C.
+    Parameters
+    ----------
+    C : array-like, shape (n, p)
+        Array with the different variables. Each column of C is taken as a variable
+    Returns
+    -------
+    P : array-like, shape (p, p)
+        P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
+        for the remaining variables in C.
+    """
+    C = np.asarray(C)
+    p = C.shape[1]
+    P_corr = np.zeros((p, p), dtype=np.float)
+    for i in range(p):
+        P_corr[i, i] = 1
+        for j in range(i+1, p):
+            idx = np.ones(p, dtype=np.bool)
+            idx[i] = False
+            idx[j] = False
+            beta_i = linalg.lstsq(C[:, idx], C[:, j])[0]
+            beta_j = linalg.lstsq(C[:, idx], C[:, i])[0]
+
+            res_j = C[:, j] - C[:, idx].dot( beta_i)
+            res_i = C[:, i] - C[:, idx].dot(beta_j)
+            
+            corr = scipy.stats.pearsonr(res_i, res_j)[0]
+            P_corr[i, j] = corr
+            P_corr[j, i] = corr
+        
+    return P_corr
