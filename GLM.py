@@ -66,11 +66,15 @@ class PP_GLM():
         else:
             self.dataset = dataset
             self.nt = self.dataset.nt
+            
             if select_trials is None:
                 self.select_trials = np.full(dataset.ntrial, True)
             else:
                 self.select_trials = select_trials
-            self.ntrial = self.select_trials.sum()
+            if type(select_trials[0]) == np.bool_:
+                self.ntrial = self.select_trials.sum()
+            else:
+                self.ntrial = self.select_trials.shape[0]
             self.membership = membership
             self.condition_ids = condition_ids
             self.npadding = self.dataset.npadding
