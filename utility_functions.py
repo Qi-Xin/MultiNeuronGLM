@@ -187,6 +187,9 @@ def color_by_brain_area(ccf_structure, colortype='normal'):
             color = [.5, .5, .5, 1.0]
     return color
 
+##### Turn np.bool array to np.int array
+def get_index_array(select_trials):
+    return np.where(select_trials==True)[0]
 
 ##### Smoothing
 def kernel_smoothing(raw, std, window=None):
