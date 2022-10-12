@@ -628,7 +628,7 @@ class PP_GLM():
         self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
         return self.test_model.nll
 
-    def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, 
+    def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
@@ -641,7 +641,7 @@ class PP_GLM():
             if effect_type=='inhomogeneous_baseline'][0]
         
         # Initialization
-        self.shifts = np.zeros((self.ntrial, 4))
+        self.shifts = np.zeros((self.ntrial, 2*len(warp_interval)))
         nll_old = np.inf
         X_baseline_original = self.effect_list[i_effect]
         
@@ -662,22 +662,18 @@ class PP_GLM():
                 
             # Update shifts (based on non-warping inhomo baseline)
             best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
-                                              self.response, self.nt, max_spike=self.max_spike)
+                                              self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval)
             if iter==0:
                 self.shifts = best_shift
             else:
-                self.shifts[:,1] = BETA*self.shifts[:,1] + (1-BETA)*best_shift[:,1]
-                self.shifts[:,3] = BETA*self.shifts[:,3] + (1-BETA)*best_shift[:,3]
-                
-                # self.shifts[:,0] = ALPHA*self.shifts[:,0] + (1-ALPHA)*best_shift[:,0]
-                # self.shifts[:,2] = ALPHA*self.shifts[:,2] + (1-ALPHA)*best_shift[:,2]
-                
-                self.shifts[:,0] = self.shifts[:,1].mean()
-                self.shifts[:,2] = self.shifts[:,3].mean()
-            
-            self.shifts[:,1] = (self.shifts[:,1] - self.shifts[:,0])*THETA + self.shifts[:,0]
-            self.shifts[:,3] = (self.shifts[:,3] - self.shifts[:,2])*THETA + self.shifts[:,2]
-            X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt)
+                for i_interval in range(len(warp_interval)):
+                    self.shifts[:,2*i_interval+1] = BETA*self.shifts[:,2*i_interval+1] + (1-BETA)*best_shift[:,2*i_interval+1]
+                    # self.shifts[:,2*i_interval] = ALPHA*self.shifts[:,2*i_interval] + (1-ALPHA)*best_shift[:,2*i_interval]
+                    self.shifts[:,2*i_interval] = self.shifts[:,2*i_interval+1].mean()  
+            for i_interval in range(len(warp_interval)):
+                self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
+            X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
+                                                          warp_interval=warp_interval)
             self.effect_list[i_effect] = X_baseline_warp
             
             if verbose:
@@ -725,9 +721,9 @@ def get_success_fail(response, return_max_spike=False, max_spike=None):
     
 #%% Time-warping baseline
 ### None MP
-def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None):
+def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]]):
     ntrial = int(len(response)/nt)
-    best_shifts = np.zeros((ntrial, 4))
+    best_shifts = np.zeros((ntrial, 2*len(warp_interval)))
     total_nll = 0
     rcd_log_lmbd = np.zeros_like(response)
     for itrial in range(ntrial):
@@ -735,7 +731,8 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
                                                 inhomo_template, 
                                                 minus_one_output[itrial*nt:(itrial+1)*nt], 
                                                 response[itrial*nt:(itrial+1)*nt], 
-                                                max_spike=max_spike)
+                                                max_spike=max_spike, 
+                                                warp_interval=warp_interval)
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
@@ -773,48 +770,43 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
 #         raise ValueError("Multiprocessing only support on Linux at the moment!")
     
 
-def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None):
-    search_grid = np.arange(0, 0.15, 0.002)
-    peak1 = time_line[np.argmax(inhomo_template[time_line<0.15])]
-    sources = [0, peak1, 0.15]
-    best_nll = np.inf
-    for moved_peak in search_grid:
-        targets = [0, moved_peak, 0.15]
-        
-        warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
-        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
-        if nll <= best_nll:
-            best_shift_peak1 = moved_peak
-            best_warped1 = warped
-            best_nll = nll
-    
-    search_grid = np.arange(0.15, 0.35, 0.002)
-    peak2 = time_line[np.sum(time_line<0.15)+np.argmax(inhomo_template[time_line>=0.15])]
-    sources = [0.15, peak2, 0.35]
-    best_nll = np.inf
-    for moved_peak in search_grid:
-        targets = [0.15, moved_peak, 0.35]
-        warped = linear_time_warping_single(time_line, best_warped1, sources, targets, verbose=False)
-        nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
-        if nll <= best_nll:
-            best_shift_peak2 = moved_peak
-            best_warped2 = warped
-            best_nll = nll
-    return np.array([peak1, best_shift_peak1, peak2, best_shift_peak2]), best_nll
+def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]]):
+    to_return = []
+    for i_interval, interval in enumerate(warp_interval):
+        search_grid = np.arange(interval[0], interval[1], 0.002)
+        peak = time_line[np.sum(time_line<interval[0])+np.argmax(inhomo_template[time_line>=interval[0]])]
+        sources = [interval[0], peak, interval[1]]
+        best_nll = np.inf
+        for moved_peak in search_grid:
+            targets = [interval[0], moved_peak, interval[1]]
+            warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
+            nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
+            if nll <= best_nll:
+                best_shift_peak = moved_peak
+                best_warped = warped
+                best_nll = nll
+        to_return.append(peak)
+        to_return.append(best_shift_peak)
+    return np.array(to_return), best_nll
 
-def apply_warping_to_predictors(time_line, X_baseline_original, shifts, nt):
+def apply_warping_to_predictors(time_line, X_baseline_original, shifts, nt, warp_interval=[[0, 0.15], [0.15, 0.35]]):
     ntrial = int(X_baseline_original.shape[0]/nt)
     X_baseline_warp = np.zeros_like(X_baseline_original)
     for itrial in range(ntrial):
-        sources1 = [0, shifts[itrial, 0], 0.15]
-        targets1 = [0, shifts[itrial, 1], 0.15]
-        sources2 = [0.15, shifts[itrial, 2], 0.35]
-        targets2 = [0.15, shifts[itrial, 3], 0.35]
+        for i_interval, interval in enumerate(warp_interval):
+            sources = []
+            sources.append([warp_interval[i_interval][0], shifts[itrial, 2*i_interval], warp_interval[i_interval][1]])
+            targets = []
+            targets.append([warp_interval[i_interval][0], shifts[itrial, 2*i_interval+1], warp_interval[i_interval][1]])
+            
         for i_col in range(X_baseline_warp.shape[1]):
-            to_warp = X_baseline_original[itrial*nt:(itrial+1)*nt, i_col]
-            warped = linear_time_warping_single(time_line, to_warp, sources1, targets1, verbose=False)
-            to_warp = warped
-            warped = linear_time_warping_single(time_line, to_warp, sources2, targets2, verbose=False)
+            for i_interval, interval in enumerate(warp_interval):
+                if i_interval==0:
+                    to_warp = X_baseline_original[itrial*nt:(itrial+1)*nt, i_col]
+                    warped = linear_time_warping_single(time_line, to_warp, sources[i_interval], targets[i_interval], verbose=False)
+                else:
+                    to_warp = warped
+                    warped = linear_time_warping_single(time_line, to_warp, sources[i_interval], targets[i_interval], verbose=False)
             X_baseline_warp[itrial*nt:(itrial+1)*nt, i_col] = warped
     return X_baseline_warp
 
