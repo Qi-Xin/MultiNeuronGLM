@@ -793,12 +793,12 @@ def apply_warping_to_predictors(time_line, X_baseline_original, shifts, nt, warp
     ntrial = int(X_baseline_original.shape[0]/nt)
     X_baseline_warp = np.zeros_like(X_baseline_original)
     for itrial in range(ntrial):
+        sources = []
+        targets = []
         for i_interval, interval in enumerate(warp_interval):
-            sources = []
             sources.append([warp_interval[i_interval][0], shifts[itrial, 2*i_interval], warp_interval[i_interval][1]])
-            targets = []
             targets.append([warp_interval[i_interval][0], shifts[itrial, 2*i_interval+1], warp_interval[i_interval][1]])
-            
+        # print(sources)
         for i_col in range(X_baseline_warp.shape[1]):
             for i_interval, interval in enumerate(warp_interval):
                 if i_interval==0:
