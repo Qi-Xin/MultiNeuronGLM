@@ -101,9 +101,7 @@ class PP_GLM():
                         'refractory_box',
                         'trial_coef', 
                         'condition_coef', 
-                        'interaction', 
-                        'interaction2', 
-                        'interaction3'],  "Not supported effect_type!"
+                        'interaction'],  "Not supported effect_type!"
 
         # record for later use
         self.effect_type_list.append(effect_type)
