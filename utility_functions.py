@@ -247,10 +247,8 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_al
         trial = spike_train.columns[itrial]
         current_condition = condition_list.loc[trial]
         current_membership = membership[np.where(condition_ids==current_condition)[0][0]]
-        # idx = current_membership[(current_membership['probe']==probe_name) \
-        #     & (current_membership['group_id']==group_id)].index.values
         idx = current_membership[(current_membership['probe']==probe_name) \
-            & (current_membership['group_id'].isin([0,1]))].index.values
+            & (current_membership['group_id']==group_id)].index.values
         if idx.sum() == 0 or use_all==True:
             # if don't get any group information in 'membership', just use all neurons 
             idx = dataset._session.units[
