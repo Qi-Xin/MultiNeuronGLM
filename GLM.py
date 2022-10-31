@@ -1362,6 +1362,13 @@ def poisson_regression(
 
 
 #%% Excursion test
+def get_excursion_statistic(function1, function2, range=None):
+    if range is None:
+        range = [0, len(function1)]
+    ROI = get_ROI(function1[range[0]:range[1]], function2[range[0]:range[1]])
+    test_statistic = get_excursion_test(function1[range[0]:range[1]], function2[range[0]:range[1]], ROI)
+    return ROI, test_statistic
+
 def get_excursion_test(function1, function2, ROI_list):
     stats_list = []
     for i, ROI in enumerate(ROI_list):
