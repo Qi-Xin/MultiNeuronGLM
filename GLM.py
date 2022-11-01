@@ -1362,12 +1362,12 @@ def poisson_regression(
 
 
 #%% Excursion test
-def get_excursion_statistic(function1, function2, range=None):
-    if range is None:
-        range = [0, len(function1)]
-    ROI = get_ROI(function1[range[0]:range[1]], function2[range[0]:range[1]])
-    test_statistic = get_excursion_test(function1[range[0]:range[1]], function2[range[0]:range[1]], ROI)
-    return ROI, test_statistic
+def get_excursion_statistic(function1, function2, time_range=None):
+    if time_range is None:
+        time_range = [0, len(function1)]
+    ROI = get_ROI(function1[time_range[0]:time_range[1]], function2[time_range[0]:time_range[1]])
+    test_statistic = get_excursion_test(function1[time_range[0]:time_range[1]], function2[time_range[0]:time_range[1]], ROI)
+    return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic
 
 def get_excursion_test(function1, function2, ROI_list):
     stats_list = []
@@ -1407,10 +1407,24 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     stationary_filter = {}
     running_output = {}
     stationary_output = {}
+    # ROI_filter = {}
+    # statistics_filter = {}
+    # ROI_output = {}
+    # statistics_output = {}
+    
     ROI_filter = {}
+    ROI_filter_left = {}
+    ROI_filter_right = {}
     statistics_filter = {}
+    statistics_filter_left = {}
+    statistics_filter_right = {}
     ROI_output = {}
+    ROI_output_left = {}
+    ROI_output_right = {}
     statistics_output = {}
+    statistics_output_left = {}
+    statistics_output_right = {}
+    
     running_model_list = []
     stationary_model_list = []
 
@@ -1479,12 +1493,20 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         function2 = np.exp( stationary_filter[filter_index] )
         ROI_filter[filter_index] = get_ROI(function1, function2)
         statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
+        ROI_filter_left[filter_index], statistics_filter_left[filter_index] = \
+            get_excursion_statistic(function1, function2, time_range=[0, 40])
+        ROI_filter_right[filter_index], statistics_filter_right[filter_index] = \
+            get_excursion_statistic(function1, function2, time_range=[40, 100])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_filter[filter_index]
             function2 = stationary_filter[filter_index]
             ROI_filter[filter_index] = get_ROI(function1, function2)
             statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
+            ROI_filter_left[filter_index], statistics_filter_left[filter_index] = \
+                get_excursion_statistic(function1, function2, time_range=[0, 40])
+            ROI_filter_right[filter_index], statistics_filter_right[filter_index] = \
+                get_excursion_statistic(function1, function2, time_range=[40, 100])
             
         # for effect output
         filter_index = i,-1
@@ -1492,13 +1514,21 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         function2 = np.exp( stationary_output[filter_index] )
         ROI_output[filter_index] = get_ROI(function1, function2)
         statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
+        ROI_output_left[filter_index], statistics_output_left[filter_index] = \
+            get_excursion_statistic(function1, function2, time_range=[0, 200])
+        ROI_output_right[filter_index], statistics_output_right[filter_index] = \
+            get_excursion_statistic(function1, function2, time_range=[200, 400])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_output[filter_index]
             function2 = stationary_output[filter_index]
             ROI_output[filter_index] = get_ROI(function1, function2)
             statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
-    return statistics_filter, statistics_output
+            ROI_output_left[filter_index], statistics_output_left[filter_index] = \
+                get_excursion_statistic(function1, function2, time_range=[0, 200])
+            ROI_output_right[filter_index], statistics_output_right[filter_index] = \
+                get_excursion_statistic(function1, function2, time_range=[200, 400])
+    return statistics_filter, statistics_output, statistics_filter_left, statistics_output_left, statistics_filter_right, statistics_output_right
 # Multiprocess version of null distribution
 
 def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
@@ -1538,18 +1568,29 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                     pool.close()
                     if ibatch == 0:
                         # The first batch the first return result will be the very first "statistics_null"
-                        statistics_filter_null, statistics_output_null = results[0].get()
+                        statistics_filter_null, statistics_output_null, statistics_filter_left_null, statistics_output_left_null, \
+                            statistics_filter_right_null, statistics_output_right_null = results[0].get()
                         pbar.update(1)
                         for result in results[1:]:
-                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new, statistics_filter_left_null_new, statistics_output_left_null_new, \
+                                statistics_filter_right_null_new, statistics_output_right_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
+                            statistics_filter_left_null = merge_dict(statistics_filter_left_null, statistics_filter_left_null_new)
+                            statistics_output_left_null = merge_dict(statistics_output_left_null, statistics_output_left_null_new)
+                            statistics_filter_right_null = merge_dict(statistics_filter_right_null, statistics_filter_right_null_new)
+                            statistics_output_right_null = merge_dict(statistics_output_right_null, statistics_output_right_null_new)
                             pbar.update(1)
                     else:
                         for result in results:
-                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new, statistics_filter_left_null_new, statistics_output_left_null_new, \
+                                statistics_filter_right_null_new, statistics_output_right_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
+                            statistics_filter_left_null = merge_dict(statistics_filter_left_null, statistics_filter_left_null_new)
+                            statistics_output_left_null = merge_dict(statistics_output_left_null, statistics_output_left_null_new)
+                            statistics_filter_right_null = merge_dict(statistics_filter_right_null, statistics_filter_right_null_new)
+                            statistics_output_right_null = merge_dict(statistics_output_right_null, statistics_output_right_null_new)
                             pbar.update(1)
                             
     else:
@@ -1564,7 +1605,8 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
             for result in tqdm(results[1:]):
                 statistics_null_new = result.get()
                 statistics_null = merge_dict(statistics_null, statistics_null_new)
-    return statistics_filter_null, statistics_output_null
+    return statistics_filter_null, statistics_output_null, statistics_filter_left_null, statistics_output_left_null, \
+        statistics_filter_right_null, statistics_output_right_null
 
 
 
@@ -1582,6 +1624,199 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     # To-do: simulation; 
     #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
     
+def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter, statistics_null_filter, ROI_filter):
+    transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
+    probe_list = V1.selected_probes
+    name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
+    fontsize = 15
+    filter_length = 100
+    filter_amp = 0.15
+    trial_length = V1.nt
+
+    pvalue_toplot = {}
+    for i in range(len(probe_list)):
+        for j in range(-1, len(probe_list)):
+            filter_index = i,j
+            pvalue_toplot[filter_index] = 1-np.sum( statistics_filter[filter_index][0]>statistics_null_filter[filter_index]) \
+                /len(statistics_null_filter[filter_index])
+
+    sns.reset_orig()
+    # sns.set_theme()
+    plt.subplots(figsize=(15,10))
+    for i in range(len(probe_list)):
+        for j in range(-1, len(probe_list)):
+            i_plot = transfer_ij[i]
+            j_plot = transfer_ij[j]
+            if i==j:
+                continue
+            ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+            filter_index = i_plot,j_plot
+    #         print(filter_index)
+            y, ci = running_filter[filter_index]
+            x = np.arange(y.shape[0])
+
+            if j == -1:
+                plt.plot(x, np.exp(y),label='running', color='r')
+                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='r', alpha=.3)
+            else:
+                # Correct for different number of neurons in different areas
+                plt.plot(x, y,label='running', color='r')
+                plt.fill_between(x, (y-2*ci), (y+2*ci), color='r', alpha=.3)
+                
+            y, ci = stationary_filter[filter_index]
+            x = np.arange(y.shape[0])
+            if j == -1:
+                plt.plot(x, np.exp(y),label='stationary', color='b')
+                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
+                plt.xticks([0, trial_length/2, trial_length])
+                plt.xlim([0, trial_length])
+                
+            else:
+                plt.plot(x, y,label='stationary', color='b')
+                plt.fill_between(x, (y-2*ci), (y+2*ci), color='b', alpha=.3)
+                plt.yticks([0])
+                plt.ylim([-filter_amp, filter_amp])
+                plt.yticks(color='w')
+                plt.xticks([0, filter_length/2, filter_length])
+                plt.xlim([0, filter_length])
+                if i==0:
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=fontsize)
+                    
+            if j==0:
+                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=fontsize)
+            if i != 5:
+                plt.xticks(color='w')
+            plt.grid()
+            
+            ins = ax.inset_axes([0.6,0.6,0.4,0.4])
+            sns.kdeplot(statistics_null_filter[filter_index], linewidth=2, ax=ins, fill=True)
+            ins.axvline(statistics_filter[filter_index], linewidth=1.5, color='r')
+            ins.set_xticks([])
+            ins.set_yticks([])
+            ins.set_ylabel('')
+            
+            if i==0 and j==2:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=fontsize)
+            if i==1 and j==0:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
+            if i==0 and j==-1:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(-0.45*filter_length, 3.4*filter_amp, f'Inhomo baseline', fontsize=fontsize)
+
+            if pvalue_toplot[filter_index]<=0.05 and j!=-1:
+                # change yellow to ROI
+                stats_list = []
+                for ii, ROI in enumerate(ROI_filter[filter_index]):
+                    function1 = stationary_filter[filter_index][0]
+                    function2 = running_filter[filter_index][0]
+                    diff = np.abs(function1 - function2)
+                    stats_list.append( np.sum(diff[ROI]) ) 
+                temp = ROI_filter[filter_index][np.argmax(stats_list)]
+                x = np.array([temp.min(), temp.max()])
+                plt.fill_between(x, np.array([-filter_amp,-filter_amp]), np.array([filter_amp,filter_amp]), \
+                                color='yellow', alpha=.5)
+    #             ax.patch.set_alpha(0.3)
+    #             ax.set_facecolor('yellow')
+                if pvalue_toplot[filter_index]>0:
+                    plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.3f}', 
+                            fontsize=10)
+                else:
+                    plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{0.001}', fontsize=10)
+
+
+def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, statistics_null_output, ROI_output):
+    transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
+    probe_list = V1.selected_probes
+    name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
+    fontsize = 15
+    filter_length = V1.nt
+    filter_amp = 1
+    trial_length = V1.nt
+
+    pvalue_output = {}
+    for i in range(len(probe_list)):
+        for j in range(-1, len(probe_list)):
+            filter_index = i,j
+            pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index][0]>statistics_null_output[filter_index]) \
+                /len(statistics_null_output[filter_index])
+
+    sns.reset_orig()
+    # sns.set_theme()
+    plt.subplots(figsize=(15,10))
+    for i in range(len(probe_list)):
+        for j in range(-1, len(probe_list)):
+            i_plot = transfer_ij[i]
+            j_plot = transfer_ij[j]
+            if i==j:
+                continue
+            ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+            filter_index = i_plot,j_plot
+            y, ci = running_output[filter_index]
+            x = np.arange(y.shape[0])
+            if j == -1:
+                plt.plot(x, np.exp(y),label='running', color='r')
+                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='r', alpha=.3)
+            else:
+                plt.plot(x, y,label='running', color='r')
+                plt.fill_between(x, y-2*ci, y+2*ci, color='r', alpha=.3)
+                
+            y, ci = stationary_output[filter_index]
+            x = np.arange(y.shape[0])
+            if j == -1:
+                plt.plot(x, np.exp(y),label='stationary', color='b')
+                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
+                plt.xticks([0, trial_length/2, trial_length])
+                plt.xlim([0, trial_length])
+                
+            else:
+                plt.plot(x, y,label='stationary', color='b')
+                plt.fill_between(x, y-2*ci, y+2*ci, color='b', alpha=.3)
+                plt.yticks([0])
+                plt.ylim([-filter_amp, filter_amp])
+                plt.yticks(color='w')
+                plt.xticks([0, filter_length/2, filter_length])
+                plt.xlim([0, filter_length])
+                if i==0:
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=fontsize)
+                    
+            if j==0:
+                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=fontsize)
+            if i != 5:
+                plt.xticks(color='w')
+            plt.grid()
+            
+            
+            if i==0 and j==2:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=fontsize)
+            if i==1 and j==0:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
+            if i==0 and j==-1:
+                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+                plt.text(-0.2*filter_length, 0.55*filter_amp, f'Inhomo baseline', fontsize=fontsize)
+                
+            if pvalue_output[filter_index]<=0.05 and j!=-1:
+                # change yellow to ROI
+                stats_list = []
+                for ii, ROI in enumerate(ROI_output[filter_index]):
+                    function1 = stationary_output[filter_index][0]
+                    function2 = running_output[filter_index][0]
+                    diff = np.abs(function1 - function2)
+                    stats_list.append( np.sum(diff[ROI]) ) 
+                temp = ROI_output[filter_index][np.argmax(stats_list)]
+                x = np.array([temp.min(), temp.max()])
+                plt.fill_between(x, np.array([-filter_amp,-filter_amp]), np.array([filter_amp,filter_amp]), \
+                                color='yellow', alpha=.5)
+    #             ax.patch.set_alpha(0.3)
+    #             ax.set_facecolor('yellow')
+                if pvalue_output[filter_index]>0:
+                    plt.text(0.57*filter_length, 0.75*filter_amp, f'p={pvalue_output[filter_index]:.3f}', 
+                            fontsize=10)
+                else:
+                    plt.text(0.57*filter_length, 0.75*filter_amp, f'p<0.001', fontsize=10)
 
 def corr(C):
     """
