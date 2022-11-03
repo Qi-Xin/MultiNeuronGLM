@@ -15,6 +15,16 @@ import scipy.signal
 
 ##### Useful information about Allen brain areas
 
+'''
+primary visual cortex (V1), 
+lateromedial area (LM), 
+laterointermediate area (LI), 
+anterolateral area (AL), 
+rostrolateral area (RL), 
+anteromedial area (AM), 
+posteromedial area (PM)
+'''
+
 """
 Total areas
 'APN', 'LP', 'MB', 'DG', 'CA1', 'VISrl', nan, 'TH', 'LGd', 'CA3', 'VIS', 'CA2',
