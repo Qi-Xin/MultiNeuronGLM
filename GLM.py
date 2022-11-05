@@ -1144,8 +1144,13 @@ def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, v
     ff = lambda x, c, dc: (np.cos(np.maximum(-np.pi,np.minimum(np.pi, (x-c)*np.pi/dc/2)))+1)/2
     ihbasis = ff(np.tile(nlin(iht+nonlinear), (1, num)), np.tile(ctrs, (nt, 1)), db)
     if verbose:
+        fontsize = 20
         plt.figure()
         plt.plot(ihbasis, '-')
+        plt.ylabel('log firing rate',fontsize=fontsize)
+        plt.xlabel('time (ms)', fontsize=fontsize) 
+        plt.xticks(fontsize=fontsize)
+        plt.yticks(fontsize=fontsize)
         plt.show()
     return ihbasis
 
@@ -1785,6 +1790,8 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=fontsize)
             if i != 5:
                 plt.xticks(color='w')
+            if i == 5:
+                plt.xlabel('time (ms)')
             plt.grid()
             
             
