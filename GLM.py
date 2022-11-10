@@ -627,7 +627,7 @@ class PP_GLM():
         return self.test_model.nll
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
-                                  tol=1e-10, method='mine', max_spike=None, verbose=True):
+                                  tol=1e-10, method='mine', max_spike=None, fix_shifts=None, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         ALPHA = 0.5   # to smooth the optimization process
@@ -643,54 +643,62 @@ class PP_GLM():
         nll_old = np.inf
         X_baseline_original = self.effect_list[i_effect]
         
-        for iter in range(max_iter):
-            # update coef (based on *warped* effect_list[i_effect])
-            self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
-            
-            # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
-            
-            inhomo_template = self.get_filter_output(trial_wise=False, ci=False)[i_effect]
-            result_output = self.get_filter_output(trial_wise=True, ci=False)
-            inhomo = result_output[i_effect]
-            total_output = np.vstack((result_output)).T
-            total_output = total_output.sum(axis=1)
-            minus_one_output = total_output - inhomo
-            if verbose:
-                print(f"After the {iter} th iteration of fitting: {self.nll}")
+        if fix_shifts is None:
+            for iter in range(max_iter):
+                # update coef (based on *warped* effect_list[i_effect])
+                self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
                 
-            # Update shifts (based on non-warping inhomo baseline)
-            best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
-                                              self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval)
-            if iter==0:
-                self.shifts = best_shift
-            else:
+                # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
+                
+                inhomo_template = self.get_filter_output(trial_wise=False, ci=False)[i_effect]
+                result_output = self.get_filter_output(trial_wise=True, ci=False)
+                inhomo = result_output[i_effect]
+                total_output = np.vstack((result_output)).T
+                total_output = total_output.sum(axis=1)
+                minus_one_output = total_output - inhomo
+                if verbose:
+                    print(f"After the {iter} th iteration of fitting: {self.nll}")
+                    
+                # Update shifts (based on non-warping inhomo baseline)
+                best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                                                self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval)
+                if iter==0:
+                    self.shifts = best_shift
+                else:
+                    for i_interval in range(len(warp_interval)):
+                        self.shifts[:,2*i_interval+1] = BETA*self.shifts[:,2*i_interval+1] + (1-BETA)*best_shift[:,2*i_interval+1]
+                        # self.shifts[:,2*i_interval] = ALPHA*self.shifts[:,2*i_interval] + (1-ALPHA)*best_shift[:,2*i_interval]
+                        self.shifts[:,2*i_interval] = self.shifts[:,2*i_interval+1].mean()  
                 for i_interval in range(len(warp_interval)):
-                    self.shifts[:,2*i_interval+1] = BETA*self.shifts[:,2*i_interval+1] + (1-BETA)*best_shift[:,2*i_interval+1]
-                    # self.shifts[:,2*i_interval] = ALPHA*self.shifts[:,2*i_interval] + (1-ALPHA)*best_shift[:,2*i_interval]
-                    self.shifts[:,2*i_interval] = self.shifts[:,2*i_interval+1].mean()  
+                    self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
+                X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
+                                                            warp_interval=warp_interval)
+                self.effect_list[i_effect] = X_baseline_warp
+                
+                if verbose:
+                    print(f"After the {iter} th iteration of warping: {nll}")
+                
+                # if not_updating, break
+                if nll_old - nll < tol:
+                    # Finished fitting
+                    pass
+                    # break
+                nll_old = nll
+        else:
+            self.shifts = fix_shifts
             for i_interval in range(len(warp_interval)):
                 self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
             X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
-                                                          warp_interval=warp_interval)
+                                                        warp_interval=warp_interval)
             self.effect_list[i_effect] = X_baseline_warp
-            
-            if verbose:
-                print(f"After the {iter} th iteration of warping: {nll}")
-            
-            # if not_updating, break
-            if nll_old - nll < tol:
-                # Finished fitting
-                pass
-                # break
-            nll_old = nll
             
         self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
         # Finished fitting
-        if iter == max_iter:
+        if fix_shifts is None and iter == max_iter:
             print("Maximum iteration reach!")
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
-        self.inhomo_template = inhomo_template
-        self.nll = nll
+        # self.inhomo_template = inhomo_template
+        # self.nll = nll
         
 #%% Binomial GLM 'logit'
 def get_link(method):
@@ -1394,7 +1402,7 @@ def merge_dict(d1, d2):
         d[k] = d1[k] + d2[k]
     return d
 
-def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
+def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
     penalty = 3e-1
     tau = 10
     order = 2
@@ -1412,28 +1420,17 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     stationary_filter = {}
     running_output = {}
     stationary_output = {}
-    # ROI_filter = {}
-    # statistics_filter = {}
-    # ROI_output = {}
-    # statistics_output = {}
-    
     ROI_filter = {}
-    ROI_filter_left = {}
-    ROI_filter_right = {}
     statistics_filter = {}
-    statistics_filter_left = {}
-    statistics_filter_right = {}
     ROI_output = {}
-    ROI_output_left = {}
-    ROI_output_right = {}
     statistics_output = {}
-    statistics_output_left = {}
-    statistics_output_right = {}
     
     running_model_list = []
     stationary_model_list = []
 
     for i, target_probe in enumerate(probe_list):
+        if i==1 or i==2 or i==4 or i==5:
+            continue
         select_trials = fake_running_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
@@ -1444,7 +1441,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
             model.add_effect('coupling', probe_list[j], apply_no_penalty=True, **coupling_filter_params)
         model.add_effect('refractory', target_probe, order=order, tau=tau, apply_no_penalty=True, **coupling_filter_params)
         model.add_effect('trial_coef')
-        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
         running_model_list.append(model)
         filter_list = model.get_filter(ci=False)
         running_filter[i,-1] = filter_list[0]
@@ -1473,7 +1470,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
             model.add_effect('coupling', probe_list[j],apply_no_penalty=True, **coupling_filter_params)
         model.add_effect('refractory', target_probe, order=order, tau=tau,apply_no_penalty=True, **coupling_filter_params)
         model.add_effect('trial_coef')
-        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
         stationary_model_list.append(model)
         filter_list = model.get_filter(ci=False)
         stationary_filter[i,-1] = filter_list[0]
@@ -1498,20 +1495,13 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         function2 = np.exp( stationary_filter[filter_index] )
         ROI_filter[filter_index] = get_ROI(function1, function2)
         statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
-        ROI_filter_left[filter_index], statistics_filter_left[filter_index] = \
-            get_excursion_statistic(function1, function2, time_range=[0, 40])
-        ROI_filter_right[filter_index], statistics_filter_right[filter_index] = \
-            get_excursion_statistic(function1, function2, time_range=[40, 100])
+
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_filter[filter_index]
             function2 = stationary_filter[filter_index]
             ROI_filter[filter_index] = get_ROI(function1, function2)
             statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
-            ROI_filter_left[filter_index], statistics_filter_left[filter_index] = \
-                get_excursion_statistic(function1, function2, time_range=[0, 40])
-            ROI_filter_right[filter_index], statistics_filter_right[filter_index] = \
-                get_excursion_statistic(function1, function2, time_range=[40, 100])
             
         # for effect output
         filter_index = i,-1
@@ -1519,24 +1509,16 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         function2 = np.exp( stationary_output[filter_index] )
         ROI_output[filter_index] = get_ROI(function1, function2)
         statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
-        ROI_output_left[filter_index], statistics_output_left[filter_index] = \
-            get_excursion_statistic(function1, function2, time_range=[0, 200])
-        ROI_output_right[filter_index], statistics_output_right[filter_index] = \
-            get_excursion_statistic(function1, function2, time_range=[200, 400])
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_output[filter_index]
             function2 = stationary_output[filter_index]
             ROI_output[filter_index] = get_ROI(function1, function2)
             statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
-            ROI_output_left[filter_index], statistics_output_left[filter_index] = \
-                get_excursion_statistic(function1, function2, time_range=[0, 200])
-            ROI_output_right[filter_index], statistics_output_right[filter_index] = \
-                get_excursion_statistic(function1, function2, time_range=[200, 400])
-    return statistics_filter, statistics_output, statistics_filter_left, statistics_output_left, statistics_filter_right, statistics_output_right
+    return statistics_filter, statistics_output
 # Multiprocess version of null distribution
 
-def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params):
+def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
     """Get the distribution of test statistics (excursion test) under the null hypothesis. 
     Null hypothesis is that trial-wise running state doesn't affect neural response. So null 
     statistics is sample from random shuffling the running state of each trial. 
@@ -1568,34 +1550,24 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
             for ibatch in range(nbatch):
                 with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
                     results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, 
-                                                                                num_basis_baseline, coupling_filter_params)) 
+                                                                                num_basis_baseline, coupling_filter_params,
+                                                                                fix_peak_time)) 
                             for i_null in np.arange(PARALLEL_BATCH_SIZE)]
                     pool.close()
                     if ibatch == 0:
                         # The first batch the first return result will be the very first "statistics_null"
-                        statistics_filter_null, statistics_output_null, statistics_filter_left_null, statistics_output_left_null, \
-                            statistics_filter_right_null, statistics_output_right_null = results[0].get()
+                        statistics_filter_null, statistics_output_null = results[0].get()
                         pbar.update(1)
                         for result in results[1:]:
-                            statistics_filter_null_new, statistics_output_null_new, statistics_filter_left_null_new, statistics_output_left_null_new, \
-                                statistics_filter_right_null_new, statistics_output_right_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
-                            statistics_filter_left_null = merge_dict(statistics_filter_left_null, statistics_filter_left_null_new)
-                            statistics_output_left_null = merge_dict(statistics_output_left_null, statistics_output_left_null_new)
-                            statistics_filter_right_null = merge_dict(statistics_filter_right_null, statistics_filter_right_null_new)
-                            statistics_output_right_null = merge_dict(statistics_output_right_null, statistics_output_right_null_new)
                             pbar.update(1)
                     else:
                         for result in results:
-                            statistics_filter_null_new, statistics_output_null_new, statistics_filter_left_null_new, statistics_output_left_null_new, \
-                                statistics_filter_right_null_new, statistics_output_right_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
-                            statistics_filter_left_null = merge_dict(statistics_filter_left_null, statistics_filter_left_null_new)
-                            statistics_output_left_null = merge_dict(statistics_output_left_null, statistics_output_left_null_new)
-                            statistics_filter_right_null = merge_dict(statistics_filter_right_null, statistics_filter_right_null_new)
-                            statistics_output_right_null = merge_dict(statistics_output_right_null, statistics_output_right_null_new)
                             pbar.update(1)
                             
     else:
@@ -1610,8 +1582,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
             for result in tqdm(results[1:]):
                 statistics_null_new = result.get()
                 statistics_null = merge_dict(statistics_null, statistics_null_new)
-    return statistics_filter_null, statistics_output_null, statistics_filter_left_null, statistics_output_left_null, \
-        statistics_filter_right_null, statistics_output_right_null
+    return statistics_filter_null, statistics_output_null
 
 
 
