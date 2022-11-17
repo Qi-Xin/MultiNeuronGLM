@@ -90,6 +90,7 @@ class PP_GLM():
     def add_effect(self, effect_type, raw_input=None, use_all=False, apply_no_penalty=False, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
                         'inhomogeneous_baseline', 
+                        'trialwise_inhomogeneous_baseline', 
                         'coupling', 
                         'twoway_coupling', 
                         'circular', 
@@ -126,6 +127,20 @@ class PP_GLM():
                                         **kwargs)
             self.effect_list.append(X_baseline)
             self.basis_list.append(X_baseline[0:self.nt,:])
+            self.basis_name.append(effect_type)
+            
+        elif effect_type == 'trialwise_inhomogeneous_baseline':
+            template = inhomo_baseline(ntrial=1, 
+                                        start=0,
+                                        end=self.nt,
+                                        dt=1, 
+                                        **kwargs)
+            nbasis = template.shape[1]
+            X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial*nbasis))
+            for itrial in range(self.ntrial):
+                X_trial_coef[(itrial*self.nt):((itrial+1)*self.nt), (itrial*nbasis):((itrial+1)*nbasis)] = template
+            self.effect_list.append(X_trial_coef)
+            self.basis_list.append(np.tile(template, (1, self.ntrial)))
             self.basis_name.append(effect_type)
             
         elif effect_type == 'coupling':
@@ -1609,12 +1624,13 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     filter_amp = 0.15
     trial_length = V1.nt
 
-    pvalue_toplot = {}
-    for i in range(len(probe_list)):
-        for j in range(-1, len(probe_list)):
-            filter_index = i,j
-            pvalue_toplot[filter_index] = 1-np.sum( statistics_filter[filter_index][0]>statistics_null_filter[filter_index]) \
-                /len(statistics_null_filter[filter_index])
+    if inference:
+        pvalue_toplot = {}
+        for i in range(len(probe_list)):
+            for j in range(-1, len(probe_list)):
+                filter_index = i,j
+                pvalue_toplot[filter_index] = 1-np.sum( statistics_filter[filter_index][0]>statistics_null_filter[filter_index]) \
+                    /len(statistics_null_filter[filter_index])
 
     sns.reset_orig()
     # sns.set_theme()
