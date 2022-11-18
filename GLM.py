@@ -1615,7 +1615,9 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     # To-do: simulation; 
     #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
     
-def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter, statistics_null_filter, ROI_filter, inference=True):
+def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
+                               statistics_null_filter=None, ROI_filter=None, inference=True, 
+                               plot_baseline=True, plot_self=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
@@ -1637,9 +1639,11 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     plt.subplots(figsize=(15,10))
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
+            if j == -1 and (not plot_baseline):
+                continue
             i_plot = transfer_ij[i]
             j_plot = transfer_ij[j]
-            if i==j:
+            if i==j and (not plot_self):
                 continue
             ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
             filter_index = i_plot,j_plot
@@ -1667,6 +1671,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.fill_between(x, (y-2*ci), (y+2*ci), color='b', alpha=.3)
                 # plt.yticks([-filter_amp, 0, filter_amp])
                 plt.yticks([0])
+                # if i!=j and i_plot!=0:
                 plt.ylim([-filter_amp, filter_amp])
                 plt.yticks(color='w')
                 plt.xticks([0, filter_length/2, filter_length])
