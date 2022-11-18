@@ -1351,7 +1351,7 @@ def poisson_regression(
         mu = np.exp(X @ beta)
         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
         hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
-        g = np.linalg.inv(hessian) @ grad 
+        g = np.linalg.pinv(hessian) @ grad 
         lr = 1
         ALPHA = 0.4
         BETA = 0.2
@@ -1385,7 +1385,7 @@ def poisson_regression(
     # Get standard error
     mu = np.exp(X @ beta)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
-    bse = np.sqrt(np.diag(np.linalg.inv(hessian)))
+    bse = np.sqrt(np.diag(np.linalg.pinv(hessian)))
     return poisson_regression_result(beta.squeeze(), bse)
 
 
