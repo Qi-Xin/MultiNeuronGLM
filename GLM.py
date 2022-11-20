@@ -420,6 +420,9 @@ class PP_GLM():
         effect_id_list = np.arange(len(self.basis_name))
         result_filter = []
         for effect_id in effect_id_list:
+            if self.effect_type_list[effect_id] == 'trialwise_inhomogeneous_baseline':
+                # result_filter.append([])
+                continue
             start_col = 0
             for previous_id in range(effect_id):
                 start_col += (self.effect_list[previous_id]).shape[1]
