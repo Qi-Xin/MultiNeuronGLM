@@ -433,9 +433,9 @@ class PP_GLM():
             coef = self.results.params[start_col:end_col]
             y = (basis@coef[:,np.newaxis]).squeeze()
             # ci
-            se = self.results.bse[start_col:end_col]
-            one_sigma_ci = (basis@se[:,np.newaxis]).squeeze()
             if ci:
+                inv_hessian = self.results.inv_hessian[start_col:end_col, start_col:end_col]
+                one_sigma_ci = np.sqrt(np.diag(basis@inv_hessian@basis.T))
                 result_filter.append([y,one_sigma_ci])
             else:
                 result_filter.append(y)
@@ -1312,9 +1312,10 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, ma
 
 
 class poisson_regression_result():
-    def __init__(self, params, bse):
+    def __init__(self, params, bse, inv_hessian=None):
         self.params = params
         self.bse = bse
+        self.inv_hessian = inv_hessian
 
 #%% Core code for fitting Poisson GLM
 def poisson_regression(
@@ -1388,8 +1389,9 @@ def poisson_regression(
     # Get standard error
     mu = np.exp(X @ beta)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
-    bse = np.sqrt(np.diag(np.linalg.pinv(hessian)))
-    return poisson_regression_result(beta.squeeze(), bse)
+    inv_hessian = np.linalg.pinv(hessian)
+    bse = np.sqrt(np.diag(inv_hessian))
+    return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
 
 #%% Excursion test
