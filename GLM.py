@@ -1121,7 +1121,10 @@ def conv_multi_trial(raw_input, kernel, merge_trial=False, npadding=None, enforc
     return G
 
 #%% Make basis for inhomo baseline, coupling filter (Pillow basis), etc.
-def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, apply_trial=None):
+def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis=False, 
+                    extend_zeros=None, apply_trial=None):
+    if extend_zeros is not None:
+        end -= extend_zeros
     basis = make_b_spline_basis(
         t_min=start, 
         t_max=end, 
@@ -1132,6 +1135,8 @@ def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis
     if basis.ndim == 1:
         basis = basis[:,np.newaxis]
     nt = basis.shape[0]
+    if extend_zeros is not None:
+        basis = np.vstack((basis, np.zeros((extend_zeros, num))))
     if apply_trial is None:
         baseline = np.tile(basis, (ntrial, 1))
     else:
@@ -1139,6 +1144,8 @@ def inhomo_baseline(ntrial=1, start=0, end=1e3, dt=1, num=10, add_constant_basis
         for i in range(ntrial):
             if apply_trial[i]:
                 baseline[(i*nt):(i*nt+nt)] = basis
+                
+
     return baseline
 
 def make_pillow_basis(num=10, peaks_min=0, peaks_max=100, nonlinear=0.2, dt=1, verbose=False):
