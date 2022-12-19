@@ -234,7 +234,7 @@ class PP_GLM():
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            tau = kwargs.pop('tau',100)
+            tau = kwargs.pop('tau',10)
             order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
@@ -260,7 +260,7 @@ class PP_GLM():
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            tau = kwargs.pop('tau',100)
+            tau = kwargs.pop('tau',10)
             order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
@@ -272,6 +272,9 @@ class PP_GLM():
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
+            
+            pillow_basis = make_pillow_basis(**kwargs)
+            
             self.effect_list.append(X_refractory**order)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
@@ -286,7 +289,7 @@ class PP_GLM():
                 input_to_couple = raw_input
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
-            tau = kwargs.pop('tau',100)
+            tau = kwargs.pop('tau',10)
             tau = int(np.ceil(tau))
             order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
@@ -671,7 +674,7 @@ class PP_GLM():
         return self.test_model.nll
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
-                                  tol=1e-10, method='mine', max_spike=None, fix_shifts=None, verbose=True):
+                                  tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         ALPHA = 0.5   # to smooth the optimization process
@@ -683,7 +686,10 @@ class PP_GLM():
             if effect_type=='inhomogeneous_baseline'][0]
         
         # Initialization
-        self.shifts = np.zeros((self.ntrial, 2*len(warp_interval)))
+        if initial_shifts is None:
+            self.shifts = np.zeros((self.ntrial, 2*len(warp_interval)))
+        else:
+            self.shifts = initial_shifts
         nll_old = np.inf
         X_baseline_original = self.effect_list[i_effect]
         
