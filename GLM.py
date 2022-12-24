@@ -275,7 +275,7 @@ class PP_GLM():
             # whether to force monotonicity
             ascend = kwargs.pop('ascend', True)
             # Function for refractory
-            Lambda_ub = np.max(refractory_spikes)+0.1
+            Lambda_ub = np.max(refractory_spikes)+0.02
             Lambda_lb = 0
             # vector form (discrete form) of basis function for fitting fr
             f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
@@ -284,6 +284,7 @@ class PP_GLM():
                                         dt=0.01, 
                                         **kwargs)
             f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*0.01
+            self.f_refractory_xx = f_refractory_xx
             # print(f_refractory_xx.shape)
             # print(f_refractory_basis_vec.shape)
             # if ascend:
@@ -1689,7 +1690,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
-    filter_length = 100
+    filter_length = stationary_filter[1,2][0].shape[0]
     filter_amp = 0.15
     trial_length = V1.nt
 
