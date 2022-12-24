@@ -99,6 +99,7 @@ class PP_GLM():
                         'varying_linear',
                         'dense_coupling',
                         'refractory',
+                        'refractory_additive',
                         'refractory_box',
                         'trial_coef', 
                         'condition_coef', 
@@ -261,22 +262,44 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
-            order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
                 temp *= np.exp(-1000.0/self.dataset.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
-            
             refractory_spikes = refractory_spikes[-self.nt:, :]
-            X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
-            X_refractory /= tau
+            refractory_spikes = refractory_spikes.flatten('F')
+            refractory_spikes /= tau
             
-            pillow_basis = make_pillow_basis(**kwargs)
+            # whether to force monotonicity
+            ascend = kwargs.pop('ascend', True)
+            # Function for refractory
+            Lambda_ub = np.max(refractory_spikes)+0.1
+            Lambda_lb = 0
+            # vector form (discrete form) of basis function for fitting fr
+            f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
+                                        start=Lambda_lb,
+                                        end=Lambda_ub,
+                                        dt=0.01, 
+                                        **kwargs)
+            f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*0.01
+            # print(f_refractory_xx.shape)
+            # print(f_refractory_basis_vec.shape)
+            # if ascend:
+            #     f_refractory_basis_vec = 
             
-            self.effect_list.append(X_refractory**order)
-            self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
+            n_f_refractory = f_refractory_basis_vec.shape[1]
+            self.f_refractory_basis = []
+            for i_basis in range(n_f_refractory):
+                self.f_refractory_basis.append(scipy.interpolate.interp1d(f_refractory_xx, f_refractory_basis_vec[:,i_basis], kind='cubic'))
+            
+            X_refractory = np.zeros((self.nt*self.ntrial, n_f_refractory))
+            for i_basis in range(n_f_refractory):
+                X_refractory[:,i_basis] = self.f_refractory_basis[i_basis](refractory_spikes)
+            
+            self.effect_list.append(X_refractory)
+            self.basis_list.append(f_refractory_basis_vec)
             self.basis_name.append(effect_type)
             
         elif effect_type == 'refractory_box':
