@@ -155,6 +155,7 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             pillow_basis = make_pillow_basis(**kwargs)
+            
             X_coupling = conv(input_to_couple, pillow_basis, npadding=self.npadding)
             self.effect_list.append(X_coupling)
             
@@ -774,6 +775,64 @@ class PP_GLM():
         # self.inhomo_template = inhomo_template
         # self.nll = nll
         
+def fit_individual(model, target_probe, coupling_filter_params, verbose=True, penalty=1e-10, method='mine', max_spike=None):
+    # print("Starting now!")
+    model = copy.deepcopy(model)
+    # Find total number of neurons needed and their corresponding trials where they are classified as cross-pop
+    cross_pop_list = []
+    cross_pop_conditions = {}
+    for neuron in model.membership[0].index:
+        if model.membership[1].loc[neuron]['probe'] == target_probe:
+            for i, member in enumerate(model.membership):
+                if member.loc[neuron]['group_id'] == 0:
+                    if neuron not in cross_pop_conditions:
+                        cross_pop_list.append(neuron)
+                        cross_pop_conditions[neuron] = [model.condition_ids[i]]
+                    else:
+                        cross_pop_conditions[neuron].append(model.condition_ids[i])
+    major_cross_pop_list = []
+    for neuron in cross_pop_list:
+        if len(cross_pop_conditions[neuron])>= 20:
+            major_cross_pop_list.append(neuron)
+    n_neuron = len(major_cross_pop_list)
+    
+    # Get the design matrix for each 
+    major_cross_pop_trial_list = []
+    design_mat = []
+    response_vec = []
+    for i, neuron in enumerate(major_cross_pop_list):
+        design_col = []
+        major_cross_pop_trial_list.append( np.array([model.dataset.presentation_table['stimulus_condition_id'][stimuli_id] in cross_pop_conditions[neuron]
+                for stimuli_id in model.dataset.spike_train.columns]) )
+        spike_train_ind = np.zeros((model.nt+model.npadding, model.ntrial))
+        for itrial in range(model.dataset.spike_train.shape[1]):
+            spike_train_ind[:,i] = model.dataset.spike_train.iloc[i, itrial]
+        pillow_basis = make_pillow_basis(**coupling_filter_params)
+        X_history = conv(spike_train_ind, pillow_basis, npadding=model.npadding)
+        empty = np.zeros_like(X_history)
+        design_col = n_neuron*[empty]
+        design_col[i] = X_history
+        design_col = [model.predictors] + design_col
+        design_mat.append(design_col)
+        response_vec.append(spike_train_ind[model.npadding:,:].flatten('F')[:, np.newaxis])
+    design_mat = np.block(design_mat)
+    response_vec = np.vstack(response_vec).flatten('F')
+    # print("Start doing poisson regression!")
+    # print(X_history.shape)
+    # print(design_mat.shape)
+    # print(response_vec.shape)
+    model.results = poisson_regression(response_vec, design_mat, L2_pen=penalty, no_penalty=model.no_penalty)
+
+    model.log_lmbd = (design_mat@model.results.params).reshape((model.nt, model.ntrial), order='F')
+    model.nll = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec)
+    model.nll_trialwise = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec, trial_wise=True)
+    model.aic = design_mat.shape[1] + model.nll
+    # model.filters = model.get_filter(ci=False)
+    if verbose:
+        print(f"Negative log likelihood is: {model.nll :.2f}")
+        print(f"aic/2 is: {model.aic :.2f}")
+    return model
+
 #%% Binomial GLM 'logit'
 def get_link(method):
     if method=='logit':
@@ -1132,8 +1191,8 @@ def conv(raw_input, kernel, npadding=None, enforce_causality=True):
     """ Causility enforced convolution. e.g. Spike trains convolve with post-spike filter; Stimulus convolve with stimulus filter. 
 
     Args:
-        spike (1d vector): spike trains of multiple trials
-        kernel (2d vector): a (nt, nbasis) matrix, which contains multiple basis
+        raw_input (2d matrix): spike trains of multiple trials
+        kernel (2d matrix): a (nt, nbasis) matrix, which contains multiple basis
 
     Returns:
         X [type]: [description]
