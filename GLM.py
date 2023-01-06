@@ -1387,7 +1387,8 @@ def poisson_regression(
         L2_pen=1e-6,
         max_num_iterations=100, 
         tol=1e-8,
-        no_penalty=[]):
+        no_penalty=[],
+        offset=None):
     """Fit Poisson GLM.
 
     The coefficients beta is fitted using Newton's method.
@@ -1398,6 +1399,8 @@ def poisson_regression(
     Y = Y[:, np.newaxis]
     assert Y.shape[0] == X.shape[0], "Predictors X should match the shape of Y"
     num_predictor = X.shape[1]
+    if offset is None:
+        offset = np.zeros_like(Y)
 
     beta = np.zeros((num_predictor, 1))
     penalty_vec = np.ones((num_predictor, 1))
@@ -1408,14 +1411,14 @@ def poisson_regression(
     for no_penalty_term in no_penalty:
         penalty_vec[no_penalty_term] = 0
     penalty_matrix = np.diag(penalty_vec.squeeze())
-    log_lmbda_hat = (X @ beta)
+    log_lmbda_hat = (X @ beta) + offset
 
     nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
     nll_old = np.inf
     for iter_index in range(max_num_iterations):
         # Newton's method.
         # g: search direction
-        mu = np.exp(X @ beta)
+        mu = np.exp((X @ beta) + offset)
         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
         hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
         g = np.linalg.pinv(hessian) @ grad 
@@ -1426,7 +1429,7 @@ def poisson_regression(
         # Backtracking line search.
         while True:
             beta_tmp = beta - lr * g
-            log_lmbd_tmp = (X @ beta_tmp)
+            log_lmbd_tmp = (X @ beta_tmp) + offset
             nll_left = spike_trains_neg_log_likelihood(log_lmbd_tmp, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
             nll_right = nll - ALPHA * lr * grad.T @ g
 
@@ -1450,7 +1453,7 @@ def poisson_regression(
         nll_old = nll
     
     # Get standard error
-    mu = np.exp(X @ beta)
+    mu = np.exp((X @ beta) + offset)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
     inv_hessian = np.linalg.pinv(hessian)
     bse = np.sqrt(np.diag(inv_hessian))
