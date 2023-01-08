@@ -795,7 +795,7 @@ def fit_individual(model, target_probe, coupling_filter_params, verbose=True, pe
         if len(cross_pop_conditions[neuron])>= 20:
             major_cross_pop_list.append(neuron)
     n_neuron = len(major_cross_pop_list)
-    
+
     # Get the design matrix for each 
     major_cross_pop_trial_list = []
     design_mat = []
@@ -804,28 +804,39 @@ def fit_individual(model, target_probe, coupling_filter_params, verbose=True, pe
         design_col = []
         major_cross_pop_trial_list.append( np.array([model.dataset.presentation_table['stimulus_condition_id'][stimuli_id] in cross_pop_conditions[neuron]
                 for stimuli_id in model.dataset.spike_train.columns]) )
-        spike_train_ind = np.zeros((model.nt+model.npadding, model.ntrial))
+        spike_train_ind = np.zeros((model.nt+model.npadding, model.dataset.spike_train.shape[1]))
         for itrial in range(model.dataset.spike_train.shape[1]):
-            spike_train_ind[:,i] = model.dataset.spike_train.iloc[i, itrial]
+            spike_train_ind[:,itrial] = model.dataset.spike_train.loc[neuron, model.dataset.spike_train.columns[itrial]]
         pillow_basis = make_pillow_basis(**coupling_filter_params)
+        spike_train_ind = spike_train_ind[:, np.logical_and(model.select_trials, major_cross_pop_trial_list[-1])]
         X_history = conv(spike_train_ind, pillow_basis, npadding=model.npadding)
         empty = np.zeros_like(X_history)
         design_col = n_neuron*[empty]
         design_col[i] = X_history
-        design_col = [model.predictors] + design_col
+        selection = []
+        for j, incrosspop in enumerate(model.select_trials):
+            if incrosspop:
+                if major_cross_pop_trial_list[-1][j]:
+                    selection = selection + model.nt*[True]
+                else:
+                    selection = selection + model.nt*[False]
+        design_col = [model.predictors[selection]] + design_col
         design_mat.append(design_col)
         response_vec.append(spike_train_ind[model.npadding:,:].flatten('F')[:, np.newaxis])
+
     design_mat = np.block(design_mat)
     response_vec = np.vstack(response_vec).flatten('F')
     # print("Start doing poisson regression!")
     # print(X_history.shape)
     # print(design_mat.shape)
     # print(response_vec.shape)
+    model.design_mat = design_mat
+    model.response_vec = response_vec
     model.results = poisson_regression(response_vec, design_mat, L2_pen=penalty, no_penalty=model.no_penalty)
 
-    model.log_lmbd = (design_mat@model.results.params).reshape((model.nt, model.ntrial), order='F')
-    model.nll = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec)
-    model.nll_trialwise = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec, trial_wise=True)
+    model.log_lmbd = (design_mat@model.results.params).reshape((model.nt, -1), order='F')
+    model.nll = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec.reshape((model.nt, -1), order='F'))
+    model.nll_trialwise = spike_trains_neg_log_likelihood(model.log_lmbd, response_vec.reshape((model.nt, -1), order='F'), trial_wise=True)
     model.aic = design_mat.shape[1] + model.nll
     # model.filters = model.get_filter(ci=False)
     if verbose:
