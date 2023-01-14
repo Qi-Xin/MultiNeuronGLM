@@ -40,6 +40,10 @@ import statsmodels.genmod.generalized_linear_model as smm
 
 import utility_functions as utils
 
+import torch
+from torch.autograd import Variable
+from torch.nn import functional as F
+
 #%% PP_GLM class
 class PP_GLM():
     def __init__(self, 
@@ -433,12 +437,16 @@ class PP_GLM():
             self.response = self.output.flatten('F')
         
         self.predictors = np.hstack(self.effect_list)
-        if penalty != 0 or method=='mine':
+        if method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
+        elif method=='pytorch':
+            self.results = poisson_regression_pytorch(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
         elif method=='logit':
+            assert penalty == 0, "logit regression must use 0 penalty"
             success_fail, max_spike = get_success_fail(self.response, max_spike=max_spike, return_max_spike=True)
             self.results = sm.GLM(success_fail, self.predictors, family=sm.families.Binomial()).fit()
         else:
+            assert penalty == 0, "Statistical Model package (SM) must use 0 penalty"
             self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
         self.max_spike = max_spike
         
@@ -1521,7 +1529,7 @@ def poisson_regression(
         if abs(nll - nll_old) < tol:
             break
         nll_old = nll
-    
+    print(nll)
     # Get standard error
     mu = np.exp((X @ beta) + offset)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
@@ -1529,6 +1537,88 @@ def poisson_regression(
     bse = np.sqrt(np.diag(inv_hessian))
     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
+
+def poisson_regression_pytorch(
+        Y,
+        X,
+        L2_pen=1e-6,
+        max_num_iterations=100, 
+        tol=1e-8,
+        no_penalty=[],
+        offset=None):
+    """Fit Poisson GLM.
+
+    The coefficients beta is fitted using Newton's method.
+    Args:
+        Y: (nt*ntrial, ) numpy vector
+        X: (nt*ntrial, num_predictor) numpy array
+    """
+    # Initialization and transform numpy to tensor
+    
+    Y = Y[:, np.newaxis]
+    assert Y.shape[0] == X.shape[0], "Predictors X should match the shape of Y"
+    num_predictor = X.shape[1]
+    Y_ts = torch.tensor(Y)
+    X_ts = torch.tensor(X)
+    if offset is None:
+        offset = np.zeros_like(Y)
+    offset_ts = torch.tensor(offset)
+    beta_ts = torch.zeros((num_predictor, 1), requires_grad=True, dtype = torch.float64)
+    penalty_vec_ts = torch.ones((num_predictor, 1))
+    if (X[:,0] == 1).all():
+        # The first column is the constant baseline, set the constant to mean firing rate. 
+        beta_ts[0] = np.log(Y.sum()/len(Y))
+        penalty_vec_ts[0] = 0
+    for no_penalty_term in no_penalty:
+        penalty_vec_ts[no_penalty_term] = 0
+    penalty_matrix = np.diag(penalty_vec_ts.squeeze())
+    penalty_matrix_ts = torch.tensor(penalty_matrix)
+    
+    log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
+    last_loss = float('inf')
+    
+    lr = 5e-4
+    optimizer = torch.optim.SGD([beta_ts], lr=lr,momentum=0.0)
+    
+    for epoch in range(100):
+        
+        optimizer.zero_grad()
+        # Forward pass
+        # Compute Loss
+        log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
+        loss = torch.sum( - (Y_ts * log_lmbda_hat) + torch.exp(log_lmbda_hat) ) \
+                + L2_pen * torch.linalg.norm(beta_ts*penalty_vec_ts)**2
+        
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+        # print(epoch,':', loss.item())
+        current_loss = loss.item()
+        if last_loss - current_loss < 0:
+            print("loss increased!")
+            lr = lr/2
+            for g in optimizer.param_groups:
+                g['lr'] *= 1/2
+        else:
+            if last_loss - current_loss <=1e-5:
+                break
+            else:
+                last_loss = current_loss
+    if epoch>=1e3 -2:
+        print("ran for 1e3 epoch and still not converge!")
+    else:
+        print(f"Used {epoch} steps to converge. ")
+
+    print(f"loss: {current_loss}")
+    
+    beta = beta_ts.detach().numpy()
+    
+    # Get standard error
+    mu = np.exp((X @ beta) + offset)
+    hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
+    inv_hessian = np.linalg.pinv(hessian)
+    bse = np.sqrt(np.diag(inv_hessian))
+    return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
 #%% Excursion test
 def get_excursion_statistic(function1, function2, time_range=None):
