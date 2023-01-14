@@ -1611,9 +1611,8 @@ def poisson_regression_pytorch(
 
     print(f"loss: {current_loss}")
     
+    # Get final results (with standard error)
     beta = beta_ts.detach().numpy()
-    
-    # Get standard error
     mu = np.exp((X @ beta) + offset)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
     inv_hessian = np.linalg.pinv(hessian)
