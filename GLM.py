@@ -1553,7 +1553,11 @@ def poisson_regression_pytorch(
         Y: (nt*ntrial, ) numpy vector
         X: (nt*ntrial, num_predictor) numpy array
     """
+    # First run line search to get initial values
+    
+    
     # Initialization and transform numpy to tensor
+    USE_ADDITIONAL_LAYER = True
     
     Y = Y[:, np.newaxis]
     assert Y.shape[0] == X.shape[0], "Predictors X should match the shape of Y"
@@ -1574,9 +1578,23 @@ def poisson_regression_pytorch(
     penalty_matrix = np.diag(penalty_vec_ts.squeeze())
     penalty_matrix_ts = torch.tensor(penalty_matrix)
     
+    # Substitude RHS with:    RHS + a*( ReLu(RHS-b) )^2
+    if USE_ADDITIONAL_LAYER:
+        intecept = torch.zeros((1, 1), requires_grad=True, dtype = torch.float64)
+        coef = torch.zeros((1, 1), requires_grad=True, dtype = torch.float64)
+        relu = torch.nn.ReLU()
+    
     # Optimization
     lr = 5e-4
-    optimizer = torch.optim.SGD([beta_ts], lr=lr,momentum=0.0)
+    if not USE_ADDITIONAL_LAYER:
+        optimizer = torch.optim.SGD([beta_ts], lr=lr,momentum=0.0)
+    else:
+        # optimizer = torch.optim.SGD([beta_ts, intecept, coef], lr=lr,momentum=0.0)
+        optimizer = torch.optim.SGD([
+                                    {'params': [beta_ts]},
+                                    {'params': [intecept], 'lr': 1e-5},
+                                    {'params': [coef], 'lr': 1e-5}
+                                    ], lr=lr, momentum=0.0)
     
     last_loss = float('inf')
     for epoch in range(100):
@@ -1584,9 +1602,15 @@ def poisson_regression_pytorch(
         optimizer.zero_grad()
         # Forward pass
         # Compute Loss
-        log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
-        loss = torch.sum( - (Y_ts * log_lmbda_hat) + torch.exp(log_lmbda_hat) ) \
-                + L2_pen * torch.linalg.norm(beta_ts*penalty_vec_ts)**2
+        if not USE_ADDITIONAL_LAYER:
+            log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
+            loss = torch.sum( - (Y_ts * log_lmbda_hat) + torch.exp(log_lmbda_hat) ) \
+                    + L2_pen * torch.linalg.norm(beta_ts*penalty_vec_ts)**2
+        else:
+            raw_log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
+            log_lmbda_hat = raw_log_lmbda_hat + coef*(relu(raw_log_lmbda_hat-intecept))**2
+            loss = torch.sum( - (Y_ts * log_lmbda_hat) + torch.exp(log_lmbda_hat) ) \
+                    + L2_pen * torch.linalg.norm(beta_ts*penalty_vec_ts)**2
         
         # Backward pass
         loss.backward()
@@ -1608,8 +1632,10 @@ def poisson_regression_pytorch(
     else:
         print(f"Used {epoch} steps to converge. ")
 
-    print(f"loss: {current_loss}")
-    
+    print(f"loss: {current_loss:.3f}")
+    if USE_ADDITIONAL_LAYER:
+        print(f"intecept:{intecept.item():.3f}; coef:{coef.item():.3f}")
+        
     # Get final results (with standard error)
     beta = beta_ts.detach().numpy()
     mu = np.exp((X @ beta) + offset)
