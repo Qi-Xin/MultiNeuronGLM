@@ -1574,12 +1574,11 @@ def poisson_regression_pytorch(
     penalty_matrix = np.diag(penalty_vec_ts.squeeze())
     penalty_matrix_ts = torch.tensor(penalty_matrix)
     
-    log_lmbda_hat = (X_ts @ beta_ts) + offset_ts
-    last_loss = float('inf')
-    
+    # Optimization
     lr = 5e-4
     optimizer = torch.optim.SGD([beta_ts], lr=lr,momentum=0.0)
     
+    last_loss = float('inf')
     for epoch in range(100):
         
         optimizer.zero_grad()
