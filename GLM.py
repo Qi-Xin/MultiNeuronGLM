@@ -90,6 +90,8 @@ class PP_GLM():
         self.kwargs_list = []
         self.target = None
         self.no_penalty = []
+        self.a = None
+        self.intecept = None
 
     def add_effect(self, effect_type, raw_input=None, use_all=False, apply_no_penalty=False, **kwargs):
         assert effect_type in ['homogeneous_baseline', 
@@ -439,6 +441,9 @@ class PP_GLM():
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
+        elif method=='additional':
+            self.results, self.a, self.intecept = poisson_regression_additional(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
+                                                                                a=self.a, intecept=self.intecept)
         elif method=='pytorch':
             self.results = poisson_regression_pytorch(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
         elif method=='logit':
@@ -448,9 +453,13 @@ class PP_GLM():
         else:
             assert penalty == 0, "Statistical Model package (SM) must use 0 penalty"
             self.results = sm.GLM(self.response, self.predictors, family=sm.families.Poisson()).fit()
+        self.method = method
         self.max_spike = max_spike
         
         self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
+        if self.method == 'additional':
+            self.log_lmbd = f_correct(self.log_lmbd, a=self.a, intecept=self.intecept)
+            
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, max_spike=self.max_spike)
         self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True, max_spike=self.max_spike)
         self.aic = self.predictors.shape[1] + self.nll
@@ -744,7 +753,8 @@ class PP_GLM():
                     
                 # Update shifts (based on non-warping inhomo baseline)
                 best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
-                                                self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval)
+                                                self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
+                                                a=self.a, intecept=self.intecept)
                 if iter==0:
                     self.shifts = best_shift
                 else:
@@ -879,18 +889,20 @@ def get_success_fail(response, return_max_spike=False, max_spike=None):
     
 #%% Time-warping baseline
 ### None MP
-def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]]):
+def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]], 
+                   a=None, intecept=None):
     ntrial = int(len(response)/nt)
     best_shifts = np.zeros((ntrial, 2*len(warp_interval)))
     total_nll = 0
-    rcd_log_lmbd = np.zeros_like(response)
     for itrial in range(ntrial):
         best_shifts_trial, best_nll_trial = get_best_shift_single(time_line, 
                                                 inhomo_template, 
                                                 minus_one_output[itrial*nt:(itrial+1)*nt], 
                                                 response[itrial*nt:(itrial+1)*nt], 
                                                 max_spike=max_spike, 
-                                                warp_interval=warp_interval)
+                                                warp_interval=warp_interval,
+                                                a=a, 
+                                                intecept=intecept)
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
@@ -928,7 +940,8 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
 #         raise ValueError("Multiprocessing only support on Linux at the moment!")
     
 
-def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]]):
+def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]],
+                          a=None, intecept=None):
     to_return = []
     for i_interval, interval in enumerate(warp_interval):
         search_grid = np.arange(interval[0], interval[1], 0.002)
@@ -938,7 +951,10 @@ def get_best_shift_single(time_line, inhomo_template, minus_one_output, response
         for moved_peak in search_grid:
             targets = [interval[0], moved_peak, interval[1]]
             warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
-            nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
+            if a is not None:
+                nll = spike_trains_neg_log_likelihood(f_correct(warped+minus_one_output, a, intecept), response, max_spike=max_spike)
+            else:
+                nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
             if nll <= best_nll:
                 best_shift_peak = moved_peak
                 best_warped = warped
@@ -1537,83 +1553,189 @@ def poisson_regression(
     bse = np.sqrt(np.diag(inv_hessian))
     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
-# def poisson_regression(
-#         Y,
-#         X,
-#         L2_pen=1e-6,
-#         max_num_iterations=100, 
-#         tol=1e-8,
-#         no_penalty=[],
-#         offset=None):
-#     """Fit Poisson GLM.
+def relu(x):
+    return np.maximum(0, x)
 
-#     The coefficients beta is fitted using Newton's method.
-#     Args:
-#         Y: (nt*ntrial, ) numpy vector
-#         X: (nt*ntrial, num_predictor) numpy array
-#     """
-#     Y = Y[:, np.newaxis]
-#     assert Y.shape[0] == X.shape[0], "Predictors X should match the shape of Y"
-#     num_predictor = X.shape[1]
-#     if offset is None:
-#         offset = np.zeros_like(Y)
+def sign(x):
+    return (x>=0).astype(float)
 
-#     beta = np.zeros((num_predictor, 1))
-#     penalty_vec = np.ones((num_predictor, 1))
-#     if (X[:,0] == 1).all():
-#         # The first column is the constant baseline, set the constant to mean firing rate. 
-#         beta[0] = np.log(Y.sum()/len(Y))
-#         penalty_vec[0] = 0
-#     for no_penalty_term in no_penalty:
-#         penalty_vec[no_penalty_term] = 0
-#     penalty_matrix = np.diag(penalty_vec.squeeze())
-#     log_lmbda_hat = (X @ beta) + offset
+def f_correct(t, a=0, intecept=0):
+    return t + a*relu(t-intecept)**2
 
-#     nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
-#     nll_old = np.inf
-#     for iter_index in range(max_num_iterations):
-#         # Newton's method.
-#         # g: search direction
-#         mu = np.exp((X @ beta) + offset)
-#         grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
-#         hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
-#         g = np.linalg.pinv(hessian) @ grad 
-#         lr = 1
-#         ALPHA = 0.4
-#         BETA = 0.2
-        
-#         # Backtracking line search.
-#         while True:
-#             beta_tmp = beta - lr * g
-#             log_lmbd_tmp = (X @ beta_tmp) + offset
-#             nll_left = spike_trains_neg_log_likelihood(log_lmbd_tmp, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
-#             nll_right = nll - ALPHA * lr * grad.T @ g
+def poisson_regression_additional(
+        Y,
+        X,
+        L2_pen=1e-6,
+        max_num_iterations=100, 
+        tol=1e-8,
+        no_penalty=[],
+        offset=None, 
+        a=None,
+        intecept=None):
+    """Fit Poisson GLM.
 
-#             if (nll_left > nll_right or
-#                     np.isnan(nll_left) or
-#                     np.isnan(nll_right)):
-#                 lr *= BETA
-#                 # print(f"update learning_rate: {lr}")
-#             else:
-#                 break
-#         if iter_index == max_num_iterations - 1:
-#             print('Warning: Reaches maximum number of iterations.')
+    The coefficients beta is fitted using Newton's method.
+    Args:
+        Y: (nt*ntrial, ) numpy vector
+        X: (nt*ntrial, num_predictor) numpy array
+    """
+    Y = Y[:, np.newaxis]
+    assert Y.shape[0] == X.shape[0], "Predictors X should match the shape of Y"
+    num_predictor = X.shape[1]
+    if offset is None:
+        offset = np.zeros_like(Y)
+
+    beta = np.zeros((num_predictor, 1))
+    penalty_vec = np.ones((num_predictor, 1))
+    if (X[:,0] == 1).all():
+        # The first column is the constant baseline, set the constant to mean firing rate. 
+        beta[0] = np.log(Y.sum()/len(Y))
+        penalty_vec[0] = 0
+    for no_penalty_term in no_penalty:
+        penalty_vec[no_penalty_term] = 0
+    penalty_matrix = np.diag(penalty_vec.squeeze())
+    
+    """ Please see the photo for equations
+    Args:
+        intecept: intecept
+        a: a
+        t: raw_log_lmbda_hat
+        z: log_lmbda_hat after correction
+        expz: lmbda_hat
+        J: loss/nll
+    """
+    if a is None:
+        a = -0.1
+    if intecept is None:
+        intecept = np.log(1)
+    
+    t = (X @ beta) + offset
+    z = f_correct(t, a, intecept)
+
+    nll = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
+    nll_old = np.inf
+    
+    max_num_alternating = 5
+    for alternating_index in range(max_num_alternating):
+        for iter_index in range(max_num_iterations):
+            ### First, update beta
+            # Newton's method.
+            # g: search direction
+            t = (X @ beta) + offset
+            z = f_correct(t, a, intecept)
+            expz = np.exp(z)
             
-#         # Update beta, negtive log-likelihood.
-#         beta = beta_tmp
-#         nll = nll_left
-#         # print(iter_index, nll)
-#         # Check convergence.
-#         if abs(nll - nll_old) < tol:
-#             break
-#         nll_old = nll
-#     print(nll)
-#     # Get standard error
-#     mu = np.exp((X @ beta) + offset)
-#     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
-#     inv_hessian = np.linalg.pinv(hessian)
-#     bse = np.sqrt(np.diag(inv_hessian))
-#     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
+            pJ_pz = -Y + expz
+            after_relu = relu(t-intecept)
+            after_sign = sign(t-intecept)
+            pz_pt = 1 + after_relu*2*a
+            pJ_pbeta = X.T @ (pJ_pz*pz_pt)
+            term1 = pJ_pz*2*a*after_sign
+            term2 = pz_pt**2*expz
+            ppJ_ppbeta = X.T @ ( (term1+term2) *X)
+
+            grad = pJ_pbeta + 2*L2_pen * penalty_vec * beta
+            hessian = ppJ_ppbeta + 2*L2_pen * penalty_matrix
+            g = np.linalg.pinv(hessian) @ grad 
+            lr = 1
+            ALPHA = 0.4
+            BETA = 0.2
+            
+            # Backtracking line search.
+            while True:
+                beta_tmp = beta - lr * g
+                t = (X @ beta_tmp) + offset
+                z = f_correct(t, a, intecept)
+                nll_left = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
+                z_right = f_correct( (X @ (beta - ALPHA * lr * g)) + offset , a, intecept)
+                nll_right = spike_trains_neg_log_likelihood(z_right, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
+
+                if (nll_left > nll_right or
+                        np.isnan(nll_left) or
+                        np.isnan(nll_right)):
+                    lr *= BETA
+                    # print(f"update learning_rate: {lr}")
+                else:
+                    break
+            if iter_index == max_num_iterations - 1:
+                print('Warning: Reaches maximum number of iterations.')
+                
+            # Update beta, negtive log-likelihood.
+            beta = beta_tmp
+            nll = nll_left
+            # print(iter_index, nll)
+            # Check convergence.
+            if abs(nll - nll_old) < tol:
+                break
+            nll_old = nll
+        print(f"after beta updating: {nll:.5f}")
+        
+        for iter_index in range(max_num_iterations):
+            ### Then, update a and intecept
+            a_intecept = np.array([[a], [intecept]])
+            ppJ_ppa = (pJ_pz.T@after_relu**2).item()
+            pJ_pa = a*ppJ_ppa
+            ppJ_pa_pintecept = -(pJ_pz.T@after_relu*2).item()
+            pJ_pintecept = a*ppJ_pa_pintecept
+            ppJ_ppintecept = (pJ_pz.T@after_sign*2*a).item()
+            grad = np.array([[pJ_pa], [pJ_pintecept]])
+            hessian = np.array([[ppJ_ppa, ppJ_pa_pintecept], [ppJ_pa_pintecept, ppJ_ppintecept]])
+            g = np.linalg.pinv(hessian) @ grad
+            print(a, intecept)
+            print(grad)
+            print(hessian)
+            print(g)
+            # g = grad
+            
+            lr = 1e-2
+            ALPHA = 0.4
+            BETA = 0.2
+            t = (X @ beta) + offset
+            
+            while True:
+                a_intecept_tmp = a_intecept - lr * g
+                z = f_correct(t, a_intecept_tmp[0, 0], a_intecept_tmp[1, 0])
+                nll_left = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
+                nll_right = nll - ALPHA * lr * grad.T @ g
+
+                if (nll_left > nll_right or
+                        np.isnan(nll_left) or
+                        np.isnan(nll_right)):
+                    lr *= BETA
+                    print(f"update learning_rate: {lr}")
+                else:
+                    break
+            if iter_index == max_num_iterations - 1:
+                print('Warning: Reaches maximum number of iterations.')
+                
+            # Update beta, negtive log-likelihood.
+            a, intecept = a_intecept[0, 0], a_intecept[1, 0]
+            nll = nll_left
+            # print(iter_index, nll)
+            # Check convergence.
+            if abs(nll - nll_old) < tol:
+                break
+            nll_old = nll
+        print(f"after a and intecept updating: {nll:.5f}")
+        
+    print(nll)
+    # Get standard error
+    # mu = np.exp((X @ beta) + offset)
+    # hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
+    t = (X @ beta) + offset
+    z = f_correct(t, a, intecept)
+    expz = np.exp(z)
+    pJ_pz = -Y + expz
+    pz_pt = 1 + relu(t-intecept)*2*a
+    pJ_pbeta = X.T @ (pJ_pz*pz_pt)
+    term1 = pJ_pz*2*a*sign(t-intecept)
+    term2 = 1 + relu(t-intecept)*2*a*expz
+    ppJ_ppbeta = X.T @ ( (term1+term2) *X)
+    hessian = ppJ_ppbeta + 2*L2_pen * penalty_matrix
+    
+    inv_hessian = np.linalg.pinv(hessian)
+    bse = np.sqrt(np.diag(inv_hessian))
+    return poisson_regression_result(beta.squeeze(), bse, inv_hessian), a, intecept
 
 def poisson_regression_pytorch(
         Y,
