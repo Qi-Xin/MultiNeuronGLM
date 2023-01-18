@@ -1605,7 +1605,7 @@ def poisson_regression_additional(
         J: loss/nll
     """
     if a is None:
-        a = -0.1
+        a = -0.4
     if intecept is None:
         intecept = np.log(1)
     
@@ -1615,8 +1615,8 @@ def poisson_regression_additional(
     nll = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
     nll_old = np.inf
     
-    max_num_alternating = 5
-    for alternating_index in range(max_num_alternating):
+    for alternating_index in range(1):
+        
         for iter_index in range(max_num_iterations):
             ### First, update beta
             # Newton's method.
@@ -1668,57 +1668,67 @@ def poisson_regression_additional(
             if abs(nll - nll_old) < tol:
                 break
             nll_old = nll
-        print(f"after beta updating: {nll:.5f}")
+        # print(f"after beta updating: {nll:.5f}")
         
-        for iter_index in range(max_num_iterations):
-            ### Then, update a and intecept
-            a_intecept = np.array([[a], [intecept]])
-            ppJ_ppa = (pJ_pz.T@after_relu**2).item()
-            pJ_pa = a*ppJ_ppa
-            ppJ_pa_pintecept = -(pJ_pz.T@after_relu*2).item()
-            pJ_pintecept = a*ppJ_pa_pintecept
-            ppJ_ppintecept = (pJ_pz.T@after_sign*2*a).item()
-            grad = np.array([[pJ_pa], [pJ_pintecept]])
-            hessian = np.array([[ppJ_ppa, ppJ_pa_pintecept], [ppJ_pa_pintecept, ppJ_ppintecept]])
-            g = np.linalg.pinv(hessian) @ grad
-            print(a, intecept)
-            print(grad)
-            print(hessian)
-            print(g)
-            # g = grad
+        
+    #     for iter_index in range(max_num_iterations):
+    #         ### Then, update a and intecept
+    #         a_intecept = np.array([[a], [intecept]])
+    #         ppJ_ppa = (pJ_pz.T@after_relu**2).item()
+    #         pJ_pa = a*ppJ_ppa
+    #         # ppJ_pa_pintecept = -(pJ_pz.T@after_relu*2*a).item()
+    #         pJ_pintecept = -(pJ_pz.T@after_relu*2*a).item()
+    #         # ppJ_ppintecept = (pJ_pz.T@after_sign*2*a).item()
+    #         grad = np.array([[pJ_pa], [pJ_pintecept]])
+    #         # hessian = np.array([[ppJ_ppa, ppJ_pa_pintecept], [ppJ_pa_pintecept, ppJ_ppintecept]])
+    #         # g = np.linalg.pinv(hessian) @ grad
+    #     #     print(a, intecept)
+    #     #     print(grad)
+    #     #     print(hessian)
+    #     #     print(g)
+    #         g = - grad
             
-            lr = 1e-2
-            ALPHA = 0.4
-            BETA = 0.2
-            t = (X @ beta) + offset
+    #         lr = 1e-2
+    #         ALPHA = 0.4
+    #         BETA = 0.2
+    #         t = (X @ beta) + offset
             
-            while True:
-                a_intecept_tmp = a_intecept - lr * g
-                z = f_correct(t, a_intecept_tmp[0, 0], a_intecept_tmp[1, 0])
-                nll_left = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
-                nll_right = nll - ALPHA * lr * grad.T @ g
-
-                if (nll_left > nll_right or
-                        np.isnan(nll_left) or
-                        np.isnan(nll_right)):
-                    lr *= BETA
-                    print(f"update learning_rate: {lr}")
-                else:
-                    break
-            if iter_index == max_num_iterations - 1:
-                print('Warning: Reaches maximum number of iterations.')
+    #         while True:
+    #             a_intecept_tmp = a_intecept - lr * g
+    #             z = f_correct(t, a_intecept_tmp[0, 0], a_intecept_tmp[1, 0])
+    #             nll_left = spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
                 
-            # Update beta, negtive log-likelihood.
-            a, intecept = a_intecept[0, 0], a_intecept[1, 0]
-            nll = nll_left
-            # print(iter_index, nll)
-            # Check convergence.
-            if abs(nll - nll_old) < tol:
-                break
-            nll_old = nll
-        print(f"after a and intecept updating: {nll:.5f}")
-        
-    print(nll)
+    #             a_intecept_tmp_right = a_intecept - ALPHA * lr * g
+    #             z_right = f_correct(t, a_intecept_tmp_right[0, 0], a_intecept_tmp_right[1, 0])
+    #             nll_right = spike_trains_neg_log_likelihood(z_right, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
+
+    #             if (nll_left > nll_right or
+    #                     np.isnan(nll_left) or
+    #                     np.isnan(nll_right)):
+    #                 lr *= BETA
+    #                 print(f"update learning_rate: {lr}")
+    #             else:
+    #                 break
+    #         if iter_index == max_num_iterations - 1:
+    #             print('Warning: Reaches maximum number of iterations.')
+                
+    #         # Update beta, negtive log-likelihood.
+    #         a, intecept = a_intecept[0, 0], a_intecept[1, 0]
+    #         nll = nll_left
+    #         # print(iter_index, nll)
+    #         # Check convergence.
+    #         if abs(nll - nll_old) < tol:
+    #             break
+    #         nll_old = nll
+    #     print(f"after a and intecept updating: {nll:.5f}")
+    
+    # print(pJ_pa, g[0,0])
+    # print(pJ_pa)
+    # for a in np.arange(-0.1-1e-3, -0.1+2*1e-3, 1e-3):
+    #     z = f_correct(t, a, intecept)
+    #     print(spike_trains_neg_log_likelihood(z, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2)
+                
+    # print(nll)
     # Get standard error
     # mu = np.exp((X @ beta) + offset)
     # hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
