@@ -208,7 +208,7 @@ def kernel_smoothing(raw, std, window=None):
     smoothed = np.zeros_like(raw).astype(float)
     for icol in range(raw.shape[1]):
         hrly = pd.Series(raw[:,icol])
-        smoothed[:,icol] = hrly.rolling(window=window, win_type='gaussian', center=True).mean(std=std)
+        smoothed[:,icol] = hrly.rolling(window=window, win_type='gaussian', center=True, min_periods=1).mean(std=std)
     return smoothed
 
 ##### Spike trains

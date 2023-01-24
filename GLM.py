@@ -254,7 +254,10 @@ class PP_GLM():
             refractory_spikes = refractory_spikes[-self.nt:, :]
             X_refractory = refractory_spikes.flatten('F')[:, np.newaxis]
             X_refractory /= tau
-            self.effect_list.append(X_refractory**order)
+            X_refractory = X_refractory**order
+            # Next line for “Refractory with cutoff”
+            # X_refractory = np.minimum(X_refractory, 3)
+            self.effect_list.append(X_refractory)
             self.basis_list.append(refractory_spikes.mean(axis=1)[:, np.newaxis])
             self.basis_name.append(effect_type)
 
@@ -275,6 +278,7 @@ class PP_GLM():
                 temp *= np.exp(-1000.0/self.dataset.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
+            # refractory_spikes = utils.kernel_smoothing(refractory_spikes, 3, window=None)
             refractory_spikes = refractory_spikes[-self.nt:, :]
             refractory_spikes = refractory_spikes.flatten('F')
             refractory_spikes /= tau
@@ -285,17 +289,25 @@ class PP_GLM():
             Lambda_ub = np.max(refractory_spikes)+0.02
             Lambda_lb = 0
             # vector form (discrete form) of basis function for fitting fr
-            f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
-                                        start=Lambda_lb,
-                                        end=Lambda_ub,
-                                        dt=0.01, 
-                                        **kwargs)
-            f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*0.01
+            # f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
+            #                             start=Lambda_lb,
+            #                             end=Lambda_ub,
+            #                             dt=0.01, 
+            #                             **kwargs)
+            
+            num = kwargs.pop('num',10)
+            add_constant_basis = False
+            dt = 0.01
+            spline_order = 2
+            knots = np.array( [np.quantile( refractory_spikes , min(1,i/(num-0.5)) ) for i in range(num+1)] )
+            knots[0], knots[-1] = Lambda_lb, Lambda_ub
+            knots = np.hstack((np.ones(spline_order) * Lambda_lb,
+                    knots,
+                    np.ones(spline_order) * Lambda_ub))
+            f_refractory_basis_vec = make_b_spline_basis_arbitrary_knots(spline_order, knots, dt, add_constant_basis, False)
+
+            f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*dt
             self.f_refractory_xx = f_refractory_xx
-            # print(f_refractory_xx.shape)
-            # print(f_refractory_basis_vec.shape)
-            # if ascend:
-            #     f_refractory_basis_vec = 
             
             n_f_refractory = f_refractory_basis_vec.shape[1]
             self.f_refractory_basis = []
