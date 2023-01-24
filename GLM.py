@@ -1545,7 +1545,7 @@ def poisson_regression(
         if abs(nll - nll_old) < tol:
             break
         nll_old = nll
-    print(nll)
+    # print(nll)
     # Get standard error
     mu = np.exp((X @ beta) + offset)
     hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
@@ -1605,9 +1605,9 @@ def poisson_regression_additional(
         J: loss/nll
     """
     if a is None:
-        a = -0.4
+        a = -0.15
     if intecept is None:
-        intecept = np.log(1)
+        intecept = -0.5
     
     t = (X @ beta) + offset
     z = f_correct(t, a, intecept)
