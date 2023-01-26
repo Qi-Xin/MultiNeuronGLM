@@ -295,11 +295,13 @@ class PP_GLM():
             #                             dt=0.01, 
             #                             **kwargs)
             
-            num = kwargs.pop('num',10)
+            # num = kwargs.pop('num',10)
+            num = 5
+            quan = [0, 0.7, 0.8, 0.9, 0.99, 1]
             add_constant_basis = False
             dt = 0.01
             spline_order = 2
-            knots = np.array( [np.quantile( refractory_spikes , min(1,i/(num-0.5)) ) for i in range(num+1)] )
+            knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
             knots[0], knots[-1] = Lambda_lb, Lambda_ub
             knots = np.hstack((np.ones(spline_order) * Lambda_lb,
                     knots,
