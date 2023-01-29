@@ -436,7 +436,7 @@ class PP_GLM():
             no_penalty_end = np.sum([self.basis_list[i].shape[1] for i in range(len(self.basis_list))])
             self.no_penalty.append(np.arange(int(no_penalty_start), int(no_penalty_end)))
 
-    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None):
+    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0):
         if self.target is None:
             self.target = target
             if type(target) == str:
@@ -454,7 +454,8 @@ class PP_GLM():
         
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
-            self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty)
+            self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
+                                              no_penalty_term_penalty=no_penalty_term_penalty)
         elif method=='additional':
             self.results, self.a, self.intecept = poisson_regression_additional(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
                                                                                 a=self.a, intecept=self.intecept)
@@ -730,7 +731,8 @@ class PP_GLM():
         return self.test_model.nll
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
-                                  tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True):
+                                  tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
+                                  no_penalty_term_penalty=0):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         ALPHA = 0.5   # to smooth the optimization process
@@ -752,7 +754,8 @@ class PP_GLM():
         if fix_shifts is None:
             for iter in range(max_iter):
                 # update coef (based on *warped* effect_list[i_effect])
-                self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
+                self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
+                         no_penalty_term_penalty=no_penalty_term_penalty)
                 
                 # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
                 
@@ -799,7 +802,8 @@ class PP_GLM():
                                                         warp_interval=warp_interval)
             self.effect_list[i_effect] = X_baseline_warp
             
-        self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike)
+        self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
+                 no_penalty_term_penalty=no_penalty_term_penalty)
         # Finished fitting
         if fix_shifts is None and iter == max_iter:
             print("Maximum iteration reach!")
@@ -1453,6 +1457,7 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, ma
         nt, ntrial= spike_trains.shape
         # Default is Poisson
         if log_lmbd.ndim == 2:    # Trialwise intensity function.
+            assert log_lmbd.shape is spike_trains.shape, "matrix doesn't match!"
             nll = - (spike_trains * log_lmbd)
             nll += np.exp(log_lmbd)
             if trial_wise:
@@ -1496,7 +1501,8 @@ def poisson_regression(
         max_num_iterations=100, 
         tol=1e-8,
         no_penalty=[],
-        offset=None):
+        offset=None, 
+        no_penalty_term_penalty=0):
     """Fit Poisson GLM.
 
     The coefficients beta is fitted using Newton's method.
@@ -1515,9 +1521,9 @@ def poisson_regression(
     if (X[:,0] == 1).all():
         # The first column is the constant baseline, set the constant to mean firing rate. 
         beta[0] = np.log(Y.sum()/len(Y))
-        penalty_vec[0] = 0
+        penalty_vec[0] = no_penalty_term_penalty
     for no_penalty_term in no_penalty:
-        penalty_vec[no_penalty_term] = 0
+        penalty_vec[no_penalty_term] = no_penalty_term_penalty
     penalty_matrix = np.diag(penalty_vec.squeeze())
     log_lmbda_hat = (X @ beta) + offset
 
