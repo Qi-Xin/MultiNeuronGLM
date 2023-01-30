@@ -1457,7 +1457,7 @@ def spike_trains_neg_log_likelihood(log_lmbd, spike_trains, trial_wise=False, ma
         nt, ntrial= spike_trains.shape
         # Default is Poisson
         if log_lmbd.ndim == 2:    # Trialwise intensity function.
-            assert log_lmbd.shape is spike_trains.shape, "matrix doesn't match!"
+            assert log_lmbd.shape==spike_trains.shape, "matrix doesn't match!"
             nll = - (spike_trains * log_lmbd)
             nll += np.exp(log_lmbd)
             if trial_wise:
