@@ -895,7 +895,7 @@ def get_success_fail(response, return_max_spike=False, max_spike=None):
     else:
         success_fail[:,:,0] = response
     if max_spike is None:
-        max_spike = int(response.max() * 1)
+        max_spike = int(response.max() * 1) + 1
     if response.ndim == 1:
         success_fail[:,1] = max_spike - response
     else:
