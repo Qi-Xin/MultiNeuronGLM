@@ -278,6 +278,7 @@ class PP_GLM():
                 temp *= np.exp(-1000.0/self.dataset.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
+
             # refractory_spikes = utils.kernel_smoothing(refractory_spikes, 3, window=None)
             refractory_spikes = refractory_spikes[-self.nt:, :]
             refractory_spikes = refractory_spikes.flatten('F')
@@ -288,6 +289,8 @@ class PP_GLM():
             # Function for refractory
             Lambda_ub = np.max(refractory_spikes)+0.02
             Lambda_lb = 0
+            # print(np.hstack((input_to_couple[500:, 85], refractory_spikes[84*500+1:85*500])))
+            # print()
             # vector form (discrete form) of basis function for fitting fr
             # f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
             #                             start=Lambda_lb,
@@ -296,17 +299,19 @@ class PP_GLM():
             #                             **kwargs)
             
             # num = kwargs.pop('num',10)
-            num = 5
-            quan = [0, 0.7, 0.8, 0.9, 0.99, 1]
+            num = 6
+            quan = [0, 0.5, 0.6, 0.7, 0.85, 0.92, 0.97, 1]
             add_constant_basis = False
             dt = 0.01
             spline_order = 2
             knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
-            knots[0], knots[-1] = Lambda_lb, Lambda_ub
+            # knots[0]= Lambda_lb
+            knots[-1] = Lambda_ub
             knots = np.hstack((np.ones(spline_order) * Lambda_lb,
                     knots,
                     np.ones(spline_order) * Lambda_ub))
             f_refractory_basis_vec = make_b_spline_basis_arbitrary_knots(spline_order, knots, dt, add_constant_basis, False)
+            f_refractory_basis_vec = f_refractory_basis_vec[:, 3:]   # Get rid of the first one
 
             f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*dt
             self.f_refractory_xx = f_refractory_xx
@@ -1176,7 +1181,7 @@ def get_best_time_range(total_output, minus_one_output, measure, time_range):
     return [best_l[0]+time_range[0], best_r[0]+time_range[0]]
 
 #%% Plotting GLM
-def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None):
+def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None, linewidth=1):
     start_col = 0
     for previous_id in range(effect_id):
         start_col += (model.effect_list[previous_id]).shape[1]
@@ -1193,10 +1198,10 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
     try:
         # try to get standard error from "results", if failed, just ignore standard error
         utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
-                      results.bse[start_col:end_col], label=label, color=color, exp=use_exp)
+                      results.bse[start_col:end_col], label=label, color=color, exp=use_exp, linewidth=linewidth)
     except:
         utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
-                np.zeros(end_col-start_col), label=label, color=color, exp=use_exp)
+                np.zeros(end_col-start_col), label=label, color=color, exp=use_exp, linewidth=linewidth)
     plt.title(title)
     plt.legend()
     if model.basis_name[effect_id] == 'twoway_coupling':
