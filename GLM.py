@@ -305,6 +305,7 @@ class PP_GLM():
             dt = 0.01
             spline_order = 2
             knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
+            # knots = np.linspace(np.quantile( refractory_spikes , 0.7 ), Lambda_ub, 6)
             # knots[0]= Lambda_lb
             knots[-1] = Lambda_ub
             knots = np.hstack((np.ones(spline_order) * Lambda_lb,
