@@ -289,30 +289,41 @@ class PP_GLM():
             # Function for refractory
             Lambda_ub = np.max(refractory_spikes)+0.02
             Lambda_lb = 0
-            # print(np.hstack((input_to_couple[500:, 85], refractory_spikes[84*500+1:85*500])))
-            # print()
-            # vector form (discrete form) of basis function for fitting fr
-            # f_refractory_basis_vec = inhomo_baseline(ntrial=1, 
-            #                             start=Lambda_lb,
-            #                             end=Lambda_ub,
-            #                             dt=0.01, 
-            #                             **kwargs)
             
-            # num = kwargs.pop('num',10)
-            num = 6
-            quan = [0, 0.5, 0.6, 0.7, 0.85, 0.92, 0.97, 1]
+            num = kwargs.pop('num', 4)
             add_constant_basis = False
             dt = 0.01
             spline_order = 2
-            knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
-            # knots = np.linspace(np.quantile( refractory_spikes , 0.7 ), Lambda_ub, 6)
+            
+            # num = 6
+            # quan = [0, 0.2, 0.6, 0.7, 0.85, 0.92, 0.97]
+            # knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
+            # knots[3:] = np.linspace(np.quantile( refractory_spikes , 0.7 ), Lambda_ub, 4)
+            # starting_knot = 3
+            
+            early_knots_quan = [0, 0.3, 0.5]
+            starting_quan = 0.8
+            end_quan = 0.92
+            starting_knot = 0
+            # early_knots_quan = []
+            # starting_quan = 0.0
+            # end_quan = 0.92
+            # starting_knot = 0
+            early_knots = [np.quantile( refractory_spikes , quan) for quan in early_knots_quan]
+            starting_val = np.quantile( refractory_spikes , starting_quan)
+            end_val = np.quantile( refractory_spikes , end_quan)
+            mid_knots = np.linspace(starting_val, end_val, num-2)
+            knots = np.hstack((early_knots, mid_knots, [Lambda_ub]))
+            
+            
             # knots[0]= Lambda_lb
             knots[-1] = Lambda_ub
             knots = np.hstack((np.ones(spline_order) * Lambda_lb,
                     knots,
                     np.ones(spline_order) * Lambda_ub))
+            # print(knots)
             f_refractory_basis_vec = make_b_spline_basis_arbitrary_knots(spline_order, knots, dt, add_constant_basis, False)
-            f_refractory_basis_vec = f_refractory_basis_vec[:, 3:]   # Get rid of the first one
+            f_refractory_basis_vec = f_refractory_basis_vec[:, starting_knot:]   # Get rid of the first three
 
             f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*dt
             self.f_refractory_xx = f_refractory_xx
