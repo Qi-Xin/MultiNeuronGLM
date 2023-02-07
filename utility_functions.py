@@ -272,17 +272,17 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_al
     
 
 ##### Filter plot
-def plot_ci(input, x=None, label=None, color='b', exp=False, center=False):
+def plot_ci(input, x=None, label=None, color='b', exp=False, center=False, linewidth=1):
     y = input[0]
     center = y[0]
     ci = input[1]
     if x is None:
         x = np.arange(len(y))
     if exp:
-        plt.plot(x, np.exp(y.squeeze()),label=label, color=color)
+        plt.plot(x, np.exp(y.squeeze()),label=label, color=color, linewidth=linewidth)
         plt.fill_between(x, np.exp((y-ci)), np.exp((y+ci)), color=color, alpha=.3)
     else:
-        plt.plot(x, y.squeeze()-center,label=label, color=color)
+        plt.plot(x, y.squeeze()-center,label=label, color=color, linewidth=linewidth)
         plt.fill_between(x, (y-2*ci)-center, (y+2*ci)-center, color=color, alpha=.3)
 
 

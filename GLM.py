@@ -301,20 +301,23 @@ class PP_GLM():
             # knots[3:] = np.linspace(np.quantile( refractory_spikes , 0.7 ), Lambda_ub, 4)
             # starting_knot = 3
             
-            early_knots_quan = [0, 0.3, 0.5]
-            starting_quan = 0.8
-            end_quan = 0.92
-            starting_knot = 0
-            # early_knots_quan = []
-            # starting_quan = 0.0
+            # early_knots_quan = [0, 0.3, 0.5]
+            # starting_quan = 0.7
             # end_quan = 0.92
-            # starting_knot = 0
+            # starting_knot = 3
+            early_knots_quan = []
+            starting_quan = 0.0
+            end_quan = 1
+            starting_knot = 2
             early_knots = [np.quantile( refractory_spikes , quan) for quan in early_knots_quan]
             starting_val = np.quantile( refractory_spikes , starting_quan)
             end_val = np.quantile( refractory_spikes , end_quan)
-            mid_knots = np.linspace(starting_val, end_val, num-2)
-            knots = np.hstack((early_knots, mid_knots, [Lambda_ub]))
-            
+            if end_quan!=1:
+                mid_knots = np.linspace(starting_val, end_val, num-2)
+                knots = np.hstack((early_knots, mid_knots, [Lambda_ub]))
+            else:
+                mid_knots = np.linspace(starting_val, end_val, num-1)
+                knots = np.hstack((early_knots, mid_knots))
             
             # knots[0]= Lambda_lb
             knots[-1] = Lambda_ub
@@ -337,6 +340,7 @@ class PP_GLM():
             for i_basis in range(n_f_refractory):
                 X_refractory[:,i_basis] = self.f_refractory_basis[i_basis](refractory_spikes)
             
+            self.refractory_spikes = refractory_spikes
             self.effect_list.append(X_refractory)
             self.basis_list.append(f_refractory_basis_vec)
             self.basis_name.append(effect_type)
