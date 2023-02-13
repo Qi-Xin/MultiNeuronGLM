@@ -284,8 +284,9 @@ class PP_GLM():
             refractory_spikes = refractory_spikes.flatten('F')
             refractory_spikes /= tau
             
-            # whether to force monotonicity
-            ascend = kwargs.pop('ascend', True)
+            # (abandoned) whether to force monotonicity
+            # ascend = kwargs.pop('ascend', True)
+            
             # Function for refractory
             Lambda_ub = np.max(refractory_spikes)+0.02
             Lambda_lb = 0
@@ -294,21 +295,16 @@ class PP_GLM():
             add_constant_basis = False
             dt = 0.01
             spline_order = 2
-            
-            # num = 6
-            # quan = [0, 0.2, 0.6, 0.7, 0.85, 0.92, 0.97]
-            # knots = np.array( [np.quantile( refractory_spikes , quan[i] ) for i in range(num+1)] )
-            # knots[3:] = np.linspace(np.quantile( refractory_spikes , 0.7 ), Lambda_ub, 4)
-            # starting_knot = 3
-            
-            # early_knots_quan = [0, 0.3, 0.5]
-            # starting_quan = 0.7
-            # end_quan = 0.92
-            # starting_knot = 3
-            early_knots_quan = []
-            starting_quan = 0.0
-            end_quan = 1
-            starting_knot = 2
+                        
+            early_knots_quan = [0, 0.3, 0.5]
+            starting_quan = 0.7
+            end_quan = 0.92
+            starting_knot = 3
+            # The following four lines are for comparison in "More details on f_{rf}.py"
+            # early_knots_quan = []
+            # starting_quan = 0.0
+            # end_quan = 1
+            # starting_knot = 2
             early_knots = [np.quantile( refractory_spikes , quan) for quan in early_knots_quan]
             starting_val = np.quantile( refractory_spikes , starting_quan)
             end_val = np.quantile( refractory_spikes , end_quan)
@@ -1952,35 +1948,28 @@ def merge_dict(d1, d2):
     return d
 
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
-    penalty = 3e-1
-    tau = 10
-    order = 2
-    num_basis_baseline = 30
+    # The following hyperparameters turned out to be the best
+    num_f_refractory = 4
     max_iter = 10
+    tau = 15
     coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
+    num_basis_baseline = 30
+    penalty = 3e-1
 
     ################ No need to change below
-    fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
-    np.random.shuffle(fake_running_trial_index)  # don't need to assign shuffled list, it's changed automatically. 
-    fake_stationary_trial_index = np.logical_not(fake_running_trial_index)
-    
     probe_list = V1.selected_probes
     running_filter = {}
     stationary_filter = {}
     running_output = {}
     stationary_output = {}
+
     ROI_filter = {}
     statistics_filter = {}
     ROI_output = {}
     statistics_output = {}
-    
-    running_model_list = []
-    stationary_model_list = []
 
     for i, target_probe in enumerate(probe_list):
-        if i==1 or i==2 or i==4 or i==5:
-            continue
-        select_trials = fake_running_trial_index
+        select_trials = V1.running_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
@@ -1988,28 +1977,21 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, apply_no_penalty=True)
         for j, input_probe in enumerate(probe_list):
             model.add_effect('coupling', probe_list[j], apply_no_penalty=True, **coupling_filter_params)
-        model.add_effect('refractory', target_probe, order=order, tau=tau, apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('refractory_additive', target_probe, tau=tau, num=num_f_refractory, apply_no_penalty=True)
         model.add_effect('trial_coef')
-        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
-        running_model_list.append(model)
-        filter_list = model.get_filter(ci=False)
-        running_filter[i,-1] = filter_list[0]
-        k = 1
-        for j, input_probe in enumerate(probe_list):
-    #         if i==j:
-    #             continue
-            running_filter[i,j] = filter_list[k]
-            k += 1
-        filter_list = model.get_filter_output(ci=False)
-        running_output[i,-1] = filter_list[0]
-        k = 1
-        for j, input_probe in enumerate(probe_list):
-    #         if i==j:
-    #             continue
-            running_output[i,j] = filter_list[k]
-            k += 1
+        if fix_peak_time is None:
+            model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        else:
+            model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
+            
+        filter_list = model.get_filter(ci=True)
+        for j in range(len(model.basis_list)):
+            running_filter[i,j-1] = filter_list[j]
+        output_list = model.get_filter_output(ci=True)
+        for j in range(len(model.basis_list)):
+            running_output[i,j-1] = output_list[j]
         
-        select_trials = fake_stationary_trial_index
+        select_trials = V1.stationary_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
@@ -2017,53 +1999,42 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         model.add_effect('inhomogeneous_baseline', num=num_basis_baseline, apply_no_penalty=True)
         for j, input_probe in enumerate(probe_list):
             model.add_effect('coupling', probe_list[j],apply_no_penalty=True, **coupling_filter_params)
-        model.add_effect('refractory', target_probe, order=order, tau=tau,apply_no_penalty=True, **coupling_filter_params)
+        model.add_effect('refractory_additive', target_probe, tau=tau, num=num_f_refractory, apply_no_penalty=True)
         model.add_effect('trial_coef')
-        model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
-        stationary_model_list.append(model)
-        filter_list = model.get_filter(ci=False)
-        stationary_filter[i,-1] = filter_list[0]
-        k = 1
-        for j, input_probe in enumerate(probe_list):
-    #         if i==j:
-    #             continue
-            stationary_filter[i,j] = filter_list[k]
-            k += 1
-        filter_list = model.get_filter_output(ci=False)
-        stationary_output[i,-1] = filter_list[0]
-        k = 1
-        for j, input_probe in enumerate(probe_list):
-    #         if i==j:
-    #             continue
-            stationary_output[i,j] = filter_list[k]
-            k += 1
+        if fix_peak_time is None:
+            model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty)
+        else:
+            model.fit_time_warping_baseline(target_probe, verbose=False, max_iter=max_iter, penalty=penalty, fix_shifts=fix_peak_time[i][select_trials])
+        
+        filter_list = model.get_filter(ci=True)
+        for j in range(len(model.basis_list)):
+            stationary_filter[i,j-1] = filter_list[j]
+        output_list = model.get_filter_output(ci=True)
+        for j in range(len(model.basis_list)):
+            stationary_output[i,j-1] = output_list[j]
         
         # for effect filter
         filter_index = i,-1
-        function1 = np.exp( running_filter[filter_index] )
-        function2 = np.exp( stationary_filter[filter_index] )
-        ROI_filter[filter_index] = get_ROI(function1, function2)
-        statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
-
+        function1 = np.exp( running_filter[filter_index][0] )
+        function2 = np.exp( stationary_filter[filter_index][0] )
+        ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
-            function1 = running_filter[filter_index]
-            function2 = stationary_filter[filter_index]
-            ROI_filter[filter_index] = get_ROI(function1, function2)
-            statistics_filter[filter_index] = get_excursion_test(function1, function2, ROI_filter[filter_index])
-            
+            function1 = running_filter[filter_index][0]
+            function2 = stationary_filter[filter_index][0]
+            ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2)
+        
         # for effect output
         filter_index = i,-1
-        function1 = np.exp( running_output[filter_index] )
-        function2 = np.exp( stationary_output[filter_index] )
-        ROI_output[filter_index] = get_ROI(function1, function2)
-        statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
+        function1 = np.exp( running_output[filter_index][0] )
+        function2 = np.exp( stationary_output[filter_index][0] )
+        ROI_output[filter_index], statistics_output[filter_index] = get_excursion_statistic(function1, function2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
-            function1 = running_output[filter_index]
-            function2 = stationary_output[filter_index]
-            ROI_output[filter_index] = get_ROI(function1, function2)
-            statistics_output[filter_index] = get_excursion_test(function1, function2, ROI_output[filter_index])
+            function1 = running_output[filter_index][0]
+            function2 = stationary_output[filter_index][0]
+            ROI_output[filter_index], statistics_output[filter_index] = get_excursion_statistic(function1, function2)
+        
     return statistics_filter, statistics_output
 # Multiprocess version of null distribution
 
