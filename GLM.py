@@ -749,7 +749,7 @@ class PP_GLM():
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
-                                  no_penalty_term_penalty=0):
+                                  no_penalty_term_penalty=0, acc_warping=False):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         ALPHA = 0.5   # to smooth the optimization process
@@ -786,9 +786,14 @@ class PP_GLM():
                     print(f"After the {iter} th iteration of fitting: {self.nll}")
                     
                 # Update shifts (based on non-warping inhomo baseline)
-                best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
-                                                self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
-                                                a=self.a, intecept=self.intecept)
+                if acc_warping is False:
+                    best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                                                    self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
+                                                    a=self.a, intecept=self.intecept)
+                else:
+                    best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                                                    self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
+                                                    a=self.a, intecept=self.intecept, previous_shifts=self.shifts)
                 if iter==0:
                     self.shifts = best_shift
                 else:
@@ -925,11 +930,15 @@ def get_success_fail(response, return_max_spike=False, max_spike=None):
 #%% Time-warping baseline
 ### None MP
 def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]], 
-                   a=None, intecept=None):
+                   a=None, intecept=None, previous_shifts=None):
     ntrial = int(len(response)/nt)
     best_shifts = np.zeros((ntrial, 2*len(warp_interval)))
     total_nll = 0
     for itrial in range(ntrial):
+        if previous_shifts is None:
+            previous_shifts_trial = None
+        else:
+            previous_shifts_trial = previous_shifts[itrial, :]
         best_shifts_trial, best_nll_trial = get_best_shift_single(time_line, 
                                                 inhomo_template, 
                                                 minus_one_output[itrial*nt:(itrial+1)*nt], 
@@ -937,52 +946,29 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
                                                 max_spike=max_spike, 
                                                 warp_interval=warp_interval,
                                                 a=a, 
-                                                intecept=intecept)
+                                                intecept=intecept,
+                                                previous_shifts=previous_shifts_trial)
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
 
-
-### MP version (unfortunately this is slower than the non MP version)
-# def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt):
-#     import multiprocessing
-#     import os
-#     ntrial = int(len(response)/nt)
-#     best_shifts = np.zeros((ntrial, 4))
-#     total_nll = 0
-#     rcd_log_lmbd = np.zeros_like(response)
-#     # PROCESSES = os.cpu_count()-2
-#     PROCESSES = 3
-#     PARALLEL_BATCH_SIZE = ntrial
-#     nbatch = int(np.ceil(ntrial/PARALLEL_BATCH_SIZE))
-    
-#     if sys.platform == 'linux':
-#         for ibatch in range(nbatch):
-#             with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:
-#                 results = [pool.apply_async(get_best_shift_single, (time_line, 
-#                                                                     inhomo_template, 
-#                                                                     minus_one_output[itrial*nt:(itrial+1)*nt], 
-#                                                                     response[itrial*nt:(itrial+1)*nt]))
-#                             for itrial in (np.arange(PARALLEL_BATCH_SIZE) + ibatch*PARALLEL_BATCH_SIZE)]
-#                 pool.close()
-#                 for iresult, result in enumerate(results):
-#                     itrial = iresult + ibatch*PARALLEL_BATCH_SIZE
-#                     best_shifts_trial, best_nll_trial = result.get()
-#                     best_shifts[itrial, :] = best_shifts_trial
-#                     total_nll += best_nll_trial
-#         return best_shifts, total_nll
-#     else:
-#         raise ValueError("Multiprocessing only support on Linux at the moment!")
-    
-
 def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]],
-                          a=None, intecept=None):
+                          a=None, intecept=None, previous_shifts=None):
     to_return = []
     for i_interval, interval in enumerate(warp_interval):
-        search_grid = np.arange(interval[0], interval[1], 0.002)
-        peak = time_line[np.sum(time_line<interval[0])+np.argmax(inhomo_template[time_line>=interval[0]])]
+        if previous_shifts is None or np.sum(previous_shifts)==0:
+            search_grid = np.arange(interval[0], interval[1], 0.002)
+        else:
+            # print(previous_shifts)
+            previous = np.round(previous_shifts[2*i_interval+1]/0.002) * 0.002
+            search_grid = np.arange(max(interval[0], previous-0.05), 
+                                    min(interval[1], previous+0.05), 
+                                    0.002)
+            # print(i_interval, interval[0], previous_shifts[2*i_interval+1], max(interval[0], previous-0.000),min(interval[1], previous+0.002) )
+        peak = time_line[np.sum(time_line<interval[0])+np.argmax(inhomo_template[np.logical_and(time_line>=interval[0], time_line<interval[1])])]
         sources = [interval[0], peak, interval[1]]
         best_nll = np.inf
+        
         for moved_peak in search_grid:
             targets = [interval[0], moved_peak, interval[1]]
             warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
@@ -1950,13 +1936,17 @@ def merge_dict(d1, d2):
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
     # The following hyperparameters turned out to be the best
     num_f_refractory = 4
-    max_iter = 10
+    max_iter = 5
     tau = 15
     coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
     num_basis_baseline = 30
     penalty = 3e-1
 
     ################ No need to change below
+    fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
+    np.random.shuffle(fake_running_trial_index)  # don't need to assign shuffled list, it's changed automatically. 
+    fake_stationary_trial_index = np.logical_not(fake_running_trial_index)
+    
     probe_list = V1.selected_probes
     running_filter = {}
     stationary_filter = {}
@@ -1969,7 +1959,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     statistics_output = {}
 
     for i, target_probe in enumerate(probe_list):
-        select_trials = V1.running_trial_index
+        select_trials = fake_running_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
@@ -1991,7 +1981,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
         for j in range(len(model.basis_list)):
             running_output[i,j-1] = output_list[j]
         
-        select_trials = V1.stationary_trial_index
+        select_trials = fake_stationary_trial_index
         model = PP_GLM(dataset=V1, 
                         select_trials=select_trials, 
                         membership=membership, 
