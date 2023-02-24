@@ -2051,8 +2051,8 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
     import multiprocessing
     import os
     # PROCESSES = os.cpu_count()-2
-    PROCESSES = 10
-    PARALLEL_BATCH_SIZE = 10
+    PROCESSES = 5
+    PARALLEL_BATCH_SIZE = 5
     nbatch = int(np.ceil(n_null/PARALLEL_BATCH_SIZE))
     print(f"Starting multiprocessing on {sys.platform}. \nCores={PROCESSES}. \nBatch size={PARALLEL_BATCH_SIZE}")
     if sys.platform == 'linux':

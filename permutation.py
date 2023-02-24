@@ -155,8 +155,12 @@ if __name__ == "__main__":
         statistics_null_filter_new, statistics_null_output_new = get_statistics_null_mp(50, V1, membership, condition_ids, probe_list, 
                                                 num_basis_baseline, coupling_filter_params, fix_peak_time=None)
         if i==0:
-            statistics_null_filter = statistics_null_filter_new
-            statistics_null_output = statistics_null_output_new
+            # statistics_null_filter = statistics_null_filter_new
+            # statistics_null_output = statistics_null_output_new
+            with open('statistics_null_filter_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
+                statistics_null_filter = pickle.load(handle)
+            with open('statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
+                statistics_null_output = pickle.load(handle)
         else:
             statistics_null_filter = GLM.merge_dict(statistics_null_filter, statistics_null_filter_new)
             statistics_null_output = GLM.merge_dict(statistics_null_output, statistics_null_output_new)
@@ -164,7 +168,7 @@ if __name__ == "__main__":
             pickle.dump(statistics_null_filter, handle)
         with open('statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
             pickle.dump(statistics_null_output, handle)
-        print(f"Finishing {(i+1)*50} permutation. ")
+        print(f"Finishing {(i+1)*50} permutation. (Total: {len(statistics_null_filter[0,0])})")
         
         i += 1
         if time.localtime().tm_hour >= 8:
