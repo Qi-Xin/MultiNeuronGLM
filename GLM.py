@@ -1933,6 +1933,14 @@ def merge_dict(d1, d2):
         d[k] = d1[k] + d2[k]
     return d
 
+def merge_dict_multi(d_list):
+    merged_d = {}
+    for k in d_list[0].keys():
+        merged_d[k] = []
+        for d in d_list:
+            merged_d[k] += d[k]
+    return merged_d
+
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
     # The following hyperparameters turned out to be the best
     num_f_refractory = 4
@@ -2064,7 +2072,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
                                                                                 fix_peak_time)) 
                             for i_null in np.arange(PARALLEL_BATCH_SIZE)]
                     pool.close()
-                    if ibatch == 0:
+                    if ibatch == 0: 
                         # The first batch the first return result will be the very first "statistics_null"
                         statistics_filter_null, statistics_output_null = results[0].get()
                         pbar.update(1)

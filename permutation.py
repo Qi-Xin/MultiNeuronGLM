@@ -171,7 +171,7 @@ if __name__ == "__main__":
         print(f"Finishing {(i+1)*50} permutation. (Total: {len(statistics_null_filter[0,0])})")
         
         i += 1
-        if time.localtime().tm_hour >= 8:
-        # if True:
+        # if time.localtime().tm_hour >= 8:
+        if False:
             break
     
