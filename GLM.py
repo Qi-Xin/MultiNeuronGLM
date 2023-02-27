@@ -1943,11 +1943,18 @@ def merge_dict_multi(d_list):
 
 def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
     # The following hyperparameters turned out to be the best
+    # num_f_refractory = 4
+    # max_iter = 5
+    # tau = 15
+    # coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
+    # num_basis_baseline = 30
+    # penalty = 3e-1
+    
     num_f_refractory = 4
     max_iter = 5
-    tau = 15
-    coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
-    num_basis_baseline = 30
+    tau = 10
+    coupling_filter_params = {'peaks_max':15, 'num':3, 'nonlinear':0.3}
+    num_basis_baseline = 25
     penalty = 3e-1
 
     ################ No need to change below
@@ -2228,10 +2235,10 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[filter_index]>0:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.3f}', 
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.4f}', 
                                 fontsize=10)
                     else:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{0.001}', fontsize=10)
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{0.0001}', fontsize=10)
 
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, statistics_null_output, ROI_output, inference=True):
