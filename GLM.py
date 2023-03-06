@@ -494,7 +494,8 @@ class PP_GLM():
             
         self.nll = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, max_spike=self.max_spike)
         self.nll_trialwise = spike_trains_neg_log_likelihood(self.log_lmbd, self.output, trial_wise=True, max_spike=self.max_spike)
-        self.aic = self.predictors.shape[1] + self.nll
+        self.aic = 2*self.predictors.shape[1] + 2*self.nll
+        self.bic = np.log(self.response.shape[0])*self.predictors.shape[1] + 2*self.nll
         self.filters = self.get_filter(ci=False)
         if verbose:
             print(f"Negative log likelihood is: {self.nll :.2f}")
