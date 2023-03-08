@@ -801,9 +801,10 @@ class PP_GLM():
                     for i_interval in range(len(warp_interval)):
                         self.shifts[:,2*i_interval+1] = BETA*self.shifts[:,2*i_interval+1] + (1-BETA)*best_shift[:,2*i_interval+1]
                         # self.shifts[:,2*i_interval] = ALPHA*self.shifts[:,2*i_interval] + (1-ALPHA)*best_shift[:,2*i_interval]
-                        self.shifts[:,2*i_interval] = self.shifts[:,2*i_interval+1].mean()  
-                for i_interval in range(len(warp_interval)):
-                    self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
+                        self.shifts[:,2*i_interval] = self.shifts[:,2*i_interval+1].mean()
+                # if iter != max_iter-1:
+                    # for i_interval in range(len(warp_interval)):
+                        # self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
                 X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
                                                             warp_interval=warp_interval)
                 self.effect_list[i_effect] = X_baseline_warp
