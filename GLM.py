@@ -44,8 +44,6 @@ import torch
 from torch.autograd import Variable
 from torch.nn import functional as F
 
-from bayes_opt import BayesianOptimization
-
 #%% PP_GLM class
 class PP_GLM():
     def __init__(self, 
@@ -955,7 +953,6 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
         best_shifts[itrial, :] = best_shifts_trial
         total_nll += best_nll_trial
     return best_shifts, total_nll
-
 
 def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]],
                           a=None, intecept=None, previous_shifts=None):
@@ -1957,10 +1954,17 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     
     num_f_refractory = 4
     max_iter = 5
-    tau = 10
-    coupling_filter_params = {'peaks_max':15, 'num':3, 'nonlinear':0.3}
-    num_basis_baseline = 25
-    penalty = 3e-1
+    tau = 15
+    coupling_filter_params = {'peaks_max':20.2, 'num':3, 'nonlinear':0.5}
+    num_basis_baseline = 20
+    penalty = 5e-1
+
+    # num_f_refractory = 4
+    # max_iter = 5
+    # tau = 15
+    # coupling_filter_params = {'peaks_max':30, 'num':4, 'nonlinear':0.5}
+    # num_basis_baseline = 20
+    # penalty = 3e-1
 
     ################ No need to change below
     fake_running_trial_index = copy.deepcopy(V1.running_trial_index)
@@ -2243,7 +2247,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                         plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.4f}', 
                                 fontsize=10)
                     else:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{0.0001}', fontsize=10)
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.4f}', fontsize=10)
 
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, statistics_null_output, ROI_output, inference=True):

@@ -54,11 +54,10 @@ if __name__ == "__main__":
 
     # The following hyperparameters turned out to be the best
     num_f_refractory = 4
-    max_iter = 10
-    self_effect = False
+    max_iter = 5
     tau = 15
-    coupling_filter_params = {'peaks_max':50, 'num':6, 'nonlinear':0.3}
-    num_basis_baseline = 30
+    coupling_filter_params = {'peaks_max':15.2, 'num':3, 'nonlinear':0.5}
+    num_basis_baseline = 20
     penalty = 3e-1
 
     ################ No need to change below
@@ -155,12 +154,12 @@ if __name__ == "__main__":
         statistics_null_filter_new, statistics_null_output_new = get_statistics_null_mp(50, V1, membership, condition_ids, probe_list, 
                                                 num_basis_baseline, coupling_filter_params, fix_peak_time=None)
         if i==0:
-            # statistics_null_filter = statistics_null_filter_new
-            # statistics_null_output = statistics_null_output_new
-            with open('statistics_null_filter_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
-                statistics_null_filter = pickle.load(handle)
-            with open('statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
-                statistics_null_output = pickle.load(handle)
+            statistics_null_filter = statistics_null_filter_new
+            statistics_null_output = statistics_null_output_new
+            # with open('statistics_null_filter_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
+            #     statistics_null_filter = pickle.load(handle)
+            # with open('statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
+            #     statistics_null_output = pickle.load(handle)
         else:
             statistics_null_filter = GLM.merge_dict(statistics_null_filter, statistics_null_filter_new)
             statistics_null_output = GLM.merge_dict(statistics_null_output, statistics_null_output_new)
