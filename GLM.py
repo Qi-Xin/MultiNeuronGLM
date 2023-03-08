@@ -943,7 +943,7 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
             previous_shifts_trial = None
         else:
             previous_shifts_trial = previous_shifts[itrial, :]
-        best_shifts_trial, best_nll_trial = get_best_shift_single_bayesian(time_line, 
+        best_shifts_trial, best_nll_trial = get_best_shift_single(time_line, 
                                                 inhomo_template, 
                                                 minus_one_output[itrial*nt:(itrial+1)*nt], 
                                                 response[itrial*nt:(itrial+1)*nt], 
@@ -956,46 +956,6 @@ def get_best_shift(time_line, inhomo_template, minus_one_output, response, nt, m
         total_nll += best_nll_trial
     return best_shifts, total_nll
 
-def get_best_shift_single_bayesian(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]],
-                          a=None, intecept=None, previous_shifts=None):
-    to_return = []
-    for i_interval, interval in enumerate(warp_interval):
-        search_grid = np.arange(interval[0], interval[1], 0.001)
-        peak = time_line[np.sum(time_line<interval[0])+np.argmax(inhomo_template[np.logical_and(time_line>=interval[0], time_line<interval[1])])]
-        sources = [interval[0], peak, interval[1]]
-        best_nll = np.inf
-        
-        def black_box_function(moved_peak):
-            moved_peak = np.round(moved_peak/0.001) * 0.001
-            targets = [interval[0], moved_peak, interval[1]]
-            warped = linear_time_warping_single(time_line, inhomo_template, sources, targets, verbose=False)
-            if a is not None:
-                nll = spike_trains_neg_log_likelihood(f_correct(warped+minus_one_output, a, intecept), response, max_spike=max_spike)
-            else:
-                nll = spike_trains_neg_log_likelihood(warped+minus_one_output, response, max_spike=max_spike)
-            return nll
-        pbounds = {'moved_peak': (interval[0], interval[1])}
-        optimizer = BayesianOptimization(
-            f=black_box_function,
-            pbounds=pbounds,
-            random_state=1)
-        if previous_shifts is None or np.sum(previous_shifts)==0:
-            pass
-        else:
-            previous = np.round(previous_shifts[2*i_interval+1]/0.002) * 0.002
-            optimizer.probe(
-                params={"moved_peak": previous},
-                lazy=True)
-        optimizer.maximize(
-            init_points=2,
-            n_iter=3)
-
-        best_shift_peak = optimizer.max['params']['moved_peak']
-        best_nll = optimizer.max['target']
-
-        to_return.append(peak)
-        to_return.append(best_shift_peak)
-    return np.array(to_return), best_nll
 
 def get_best_shift_single(time_line, inhomo_template, minus_one_output, response, max_spike=None, warp_interval=[[0, 0.15], [0.15, 0.35]],
                           a=None, intecept=None, previous_shifts=None):
