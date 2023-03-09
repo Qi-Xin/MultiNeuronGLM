@@ -52,28 +52,28 @@ if __name__ == "__main__":
     # V1.get_trial_metric_per_unit_per_trial(metric_type='spike_times')
     V1.get_running(method="mine")
 
-    # The following hyperparameters turned out to be the best
-    num_f_refractory = 4
-    max_iter = 5
-    tau = 15
-    coupling_filter_params = {'peaks_max':15.2, 'num':3, 'nonlinear':0.5}
-    num_basis_baseline = 20
-    penalty = 3e-1
+    # # The following hyperparameters turned out to be the best
+    # num_f_refractory = 4
+    # max_iter = 5
+    # tau = 15
+    # coupling_filter_params = {'peaks_max':15.2, 'num':3, 'nonlinear':0.5}
+    # num_basis_baseline = 20
+    # penalty = 3e-1
 
-    ################ No need to change below
-    probe_list = V1.selected_probes
-    running_filter = {}
-    stationary_filter = {}
-    running_output = {}
-    stationary_output = {}
+    # ################ No need to change below
+    # probe_list = V1.selected_probes
+    # running_filter = {}
+    # stationary_filter = {}
+    # running_output = {}
+    # stationary_output = {}
 
-    ROI_filter = {}
-    statistics_filter = {}
-    ROI_output = {}
-    statistics_output = {}
+    # ROI_filter = {}
+    # statistics_filter = {}
+    # ROI_output = {}
+    # statistics_output = {}
 
-    running_model_list = []
-    stationary_model_list = []
+    # running_model_list = []
+    # stationary_model_list = []
 
     # for i, target_probe in enumerate(probe_list):
     #     select_trials = V1.running_trial_index
@@ -151,8 +151,7 @@ if __name__ == "__main__":
     i = 0
     while True:
         
-        statistics_null_filter_new, statistics_null_output_new = get_statistics_null_mp(50, V1, membership, condition_ids, probe_list, 
-                                                num_basis_baseline, coupling_filter_params, fix_peak_time=None)
+        statistics_null_filter_new, statistics_null_output_new = get_statistics_null_mp(50, V1, membership, condition_ids, fix_peak_time=None)
         if i==0:
             statistics_null_filter = statistics_null_filter_new
             statistics_null_output = statistics_null_output_new

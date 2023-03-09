@@ -1943,7 +1943,7 @@ def merge_dict_multi(d_list):
             merged_d[k] += d[k]
     return merged_d
 
-def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
+def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
     # The following hyperparameters turned out to be the best
     # num_f_refractory = 4
     # max_iter = 5
@@ -2052,7 +2052,7 @@ def get_statistics_null_excursion(V1, membership, condition_ids, probe_list, num
     return statistics_filter, statistics_output
 # Multiprocess version of null distribution
 
-def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, num_basis_baseline, coupling_filter_params, fix_peak_time):
+def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time):
     """Get the distribution of test statistics (excursion test) under the null hypothesis. 
     Null hypothesis is that trial-wise running state doesn't affect neural response. So null 
     statistics is sample from random shuffling the running state of each trial. 
@@ -2083,9 +2083,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, probe_list, nu
         with tqdm(total=n_null) as pbar:
             for ibatch in range(nbatch):
                 with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-                    results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, probe_list, 
-                                                                                num_basis_baseline, coupling_filter_params,
-                                                                                fix_peak_time)) 
+                    results = [pool.apply_async(get_statistics_null_excursion, (V1, membership, condition_ids, fix_peak_time)) 
                             for i_null in np.arange(PARALLEL_BATCH_SIZE)]
                     pool.close()
                     if ibatch == 0: 
