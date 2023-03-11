@@ -243,6 +243,7 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
+            self.tau = tau
             order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
@@ -272,6 +273,7 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
+            self.tau = tau
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
@@ -352,6 +354,7 @@ class PP_GLM():
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
+            self.tau = tau
             tau = int(np.ceil(tau))
             order = kwargs.pop('order', 2)
             refractory_spikes = np.zeros_like(input_to_couple)
@@ -1955,9 +1958,16 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
     num_f_refractory = 4
     max_iter = 5
     tau = 15
-    coupling_filter_params = {'peaks_max':20.2, 'num':3, 'nonlinear':0.5}
+    coupling_filter_params = {'peaks_max':26, 'num':3, 'nonlinear':0.9}
     num_basis_baseline = 20
     penalty = 5e-1
+
+    # num_f_refractory = 4
+    # max_iter = 5
+    # tau = 15
+    # coupling_filter_params = {'peaks_max':20.2, 'num':3, 'nonlinear':0.5}
+    # num_basis_baseline = 20
+    # penalty = 5e-1
 
     # num_f_refractory = 4
     # max_iter = 5
@@ -2242,10 +2252,10 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[filter_index]>0:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.4f}', 
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.5f}', 
                                 fontsize=10)
                     else:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.4f}', fontsize=10)
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=10)
 
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, statistics_null_output, ROI_output, inference=True):
