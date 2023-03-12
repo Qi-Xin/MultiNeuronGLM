@@ -1,11 +1,6 @@
 #%% import
 from curses import raw
-from multiprocessing.spawn import old_main_modules
 import os
-from tkinter import N, Menu
-from urllib.parse import ParseResultBytes
-
-from absl import logging
 import collections
 from collections import defaultdict
 import io
@@ -14,21 +9,14 @@ import numpy as np
 import numpy.random
 import matplotlib.pyplot as plt
 import pandas as pd
-from psycopg2 import paramstyle
-from regex import D
-# from pyrsistent import m
 import seaborn as sns
-from scipy.ndimage import gaussian_filter1d
 import scipy.interpolate 
 import scipy.signal
 from scipy import linalg
 from sklearn.linear_model import PoissonRegressor
-import sklearn.model_selection
 from tqdm import tqdm
 import sys
-import numpy as np
 import copy
-# import numpy.matlib
 from numpy.fft import fft as fft
 from numpy.fft import ifft as ifft
 import scipy.stats
@@ -329,15 +317,16 @@ class PP_GLM():
             f_refractory_xx = np.arange(f_refractory_basis_vec.shape[0])*dt
             self.f_refractory_xx = f_refractory_xx
             
-            n_f_refractory = f_refractory_basis_vec.shape[1]
+            self.n_f_refractory = f_refractory_basis_vec.shape[1]
             self.f_refractory_basis = []
-            for i_basis in range(n_f_refractory):
+            for i_basis in range(self.n_f_refractory):
                 self.f_refractory_basis.append(scipy.interpolate.interp1d(f_refractory_xx, f_refractory_basis_vec[:,i_basis], kind='cubic'))
             
-            X_refractory = np.zeros((self.nt*self.ntrial, n_f_refractory))
-            for i_basis in range(n_f_refractory):
+            X_refractory = np.zeros((self.nt*self.ntrial, self.n_f_refractory))
+            for i_basis in range(self.n_f_refractory):
                 X_refractory[:,i_basis] = self.f_refractory_basis[i_basis](refractory_spikes)
             
+            self.refractory_additive_start = np.sum([effect.shape[1] for effect in self.effect_list])
             self.refractory_spikes = refractory_spikes
             self.effect_list.append(X_refractory)
             self.basis_list.append(f_refractory_basis_vec)
@@ -371,6 +360,8 @@ class PP_GLM():
             X_trial_coef = np.zeros((self.nt*self.ntrial, self.ntrial))
             for itrial in range(self.ntrial):
                 X_trial_coef[(itrial*self.nt):((itrial+1)*self.nt), itrial] = 1
+
+            self.trial_coef_start = np.sum([effect.shape[1] for effect in self.effect_list])
             self.effect_list.append(X_trial_coef)
             self.basis_list.append(np.diag(np.ones(self.ntrial)))
             self.basis_name.append(effect_type)
@@ -1041,41 +1032,116 @@ def linear_time_warping_single(t, f, sources, targets, verbose=True):
     return f_warp
     
 #%% Simulation
-def simulate(model_list, probe_list=['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']):
-    # Get {probe2num} dictionary
+
+def simulate_baseline_coupling_refractory(model_list, nepoch=1):
+    nneuron = len(model_list)
+    taus = np.array([model.tau for model in model_list])
+    probe_list = model_list[0].dataset.selected_probes
+    
+    spikes_rcd = np.zeros((model_list[0].nt, nepoch*model_list[0].ntrial, len(model_list)))
+    log_firing_rate_rcd = np.zeros((model_list[0].nt, nepoch*model_list[0].ntrial, len(model_list)))
+    peaks_rcd = np.zeros((2, nepoch*model_list[0].ntrial, len(model_list)))
+    
     probe2num = {}
     for iprobe, probe in enumerate(probe_list):
         probe2num[probe] = iprobe
     
-    # Get three dimension matrix of coupling filters for better computing.   
-    npop = len(model_list)
+    # Get three dimension matrix of coupling filters for better computing. 
     max_histories = 1
+    max_histories_refractory = 1
     nt = model_list[0].nt
-    allowed_effect_type = ['inhomogeneous_baseline', 'coupling', 'trial_coef']
-    baseline_mat = np.zeros((nt, npop))
-    coupling_mat = np.zeros((max_histories, npop, npop))
+    allowed_effect_type = ['inhomogeneous_baseline', 'coupling', 'trial_coef', 'refractory_additive']
+    coupling_mat = np.zeros((max_histories, nneuron, nneuron))
+    f_refractory_list = []
     
-    for ineuron in range(npop):
-        assert all(effect_type in allowed_effect_type for effect_type in model_list[ineuron].effect_type_list), "Only support inhomogeneous_baseline and coupling effects now!"
+    for ineuron in range(nneuron):
+        assert all(effect_type in allowed_effect_type for effect_type in model_list[ineuron].effect_type_list), \
+            "For refractory additive models with time warping only!"
         model = model_list[ineuron]
         for ieffect, effect_type in enumerate(model.effect_type_list):
-            
-            if effect_type in ['inhomogeneous_baseline']:
-                baseline_mat[:, ineuron] = model.filters[ieffect]
+
+            if effect_type in ['inhomogeneous_baseline', ]:
+                pass
+
             elif effect_type in ['coupling']:
                 nhistories = len(model.filters[ieffect])
                 probe_name = utils.PROBE_CORRESPONDING_INVERSE[model.basis_name[ieffect][-2:]]
                 iprobe = probe2num[probe_name]
                 if nhistories > max_histories:
                     coupling_mat_old = coupling_mat
-                    coupling_mat = np.zeros((nhistories, npop, npop))
+                    coupling_mat = np.zeros((nhistories, nneuron, nneuron))
                     coupling_mat[-max_histories:, :, :] = coupling_mat_old
                     max_histories = nhistories
+
                 coupling_mat[-nhistories:, iprobe, ineuron] = np.flip(model.filters[ieffect])
-    
-    spikes, log_firing_rate = simulate_baseline_coupling(baseline_mat, coupling_mat)
-    return spikes, log_firing_rate
-    
+
+            elif effect_type in ['refractory_additive']:
+                f_refractory_vec = model.filters[ieffect]
+                f_refractory_xx = model.f_refractory_xx
+
+                # Get a longer time line for lambda
+                dt = f_refractory_xx[1] - f_refractory_xx[0]
+                new_f_refractory_xx = np.arange(f_refractory_xx.shape[0]+50)*dt
+                # The end point, which is used to get the parameter k of k*x**2
+                last_point = [f_refractory_xx[-1], f_refractory_vec[-1]]
+                quadratic_refractory = new_f_refractory_xx**2*(last_point[1]/last_point[0]**2)/2 + last_point[1]/2
+                # Get the longer f_refractory_vec in discrete form
+                new_f_refractory_vec = copy.deepcopy(quadratic_refractory)
+                new_f_refractory_vec[0:len(f_refractory_vec)] = f_refractory_vec
+                # Transfer discrete f_refractory_vec to a continuous callable function
+                f_refractory = scipy.interpolate.interp1d(new_f_refractory_xx, 
+                                                          new_f_refractory_vec, 
+                                                          kind='cubic', 
+                                                          fill_value="extrapolate")
+                f_refractory_list.append(f_refractory)
+                plt.plot(new_f_refractory_vec)
+
+    for iepoch in tqdm( range(nepoch) ):
+        for itrial in range(model_list[0].ntrial):
+
+            baseline_mat = np.zeros((nt, nneuron))
+            spikes = np.zeros((nt, nneuron, 1))
+
+            for ineuron in range(nneuron):
+                model = model_list[ineuron]
+                for ieffect, effect_type in enumerate(model.effect_type_list):
+
+                    if effect_type in ['inhomogeneous_baseline', ]:
+                        baseline_mat[:, ineuron] = model.filters[ieffect]
+                        baseline_mat[:, ineuron] = apply_warping_to_predictors(model.dataset.time_line, 
+                                                                                baseline_mat[:, ineuron][:,None], 
+                                                                                model.shifts[itrial,:][None,:], 
+                                                                                model.nt).squeeze()
+                        baseline_mat[:, ineuron] += model.results.params[model.trial_coef_start+itrial]
+
+            log_firing_rate = baseline_mat[:,:,np.newaxis]
+            spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
+            recent_spike_sum = copy.deepcopy(spikes[0, :, 0])
+
+            for t in range(1, nt):
+                recent_spike_sum *= np.exp(-1000.0/model_list[0].dataset.fps/taus)
+                nhistories = min(t, max_histories)
+                temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
+                refractory = np.zeros(nneuron)
+                for ineuron in range(nneuron):
+                    refractory[ineuron] = f_refractory_list[ineuron](recent_spike_sum[ineuron]/taus[ineuron])
+                log_firing_rate[t,:,0] += temp_log_firing_rate + refractory
+                spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
+                recent_spike_sum += spikes[t, :, 0]
+
+            log_firing_rate = log_firing_rate.squeeze()
+            spikes = spikes.squeeze()
+
+            log_firing_rate_rcd[:, iepoch*model_list[0].ntrial + itrial, :] = log_firing_rate
+            spikes_rcd[:, iepoch*model_list[0].ntrial + itrial, :] = spikes
+            for ineuron in range(nneuron):
+                peaks_rcd[0, iepoch*model_list[0].ntrial + itrial, ineuron] = \
+                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[:150, ineuron])[:, np.newaxis], std=5))
+                peaks_rcd[1, iepoch*model_list[0].ntrial + itrial, ineuron] = \
+                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[150:, ineuron])[:, np.newaxis], std=5))
+                
+    return spikes_rcd, log_firing_rate_rcd, peaks_rcd
+
 def simulate_baseline_coupling(baseline_mat, coupling_mat):
     MAX_FIRING_RATE = np.log(10000)
     max_histories, _, npop = coupling_mat.shape
@@ -1094,56 +1160,6 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
     log_firing_rate = log_firing_rate.squeeze()
     spikes = spikes.squeeze()
     return spikes, log_firing_rate
-
-def simulate_individual_history(baseline_mat, coupling_mat, history_list, nneuron_list=None):
-    MAX_FIRING_RATE = np.log(10000)
-    # nneuron: number of individual neuorns
-    # npop: number of populations
-    temp = copy.deepcopy(history_list)
-    history_list = temp
-    max_histories_history = 0
-    if nneuron_list is not None:
-        assert len(history_list) == len(nneuron_list), "The number of populations should matach!"
-        for i, history in enumerate(history_list):
-            assert history_list[i].ndim == 1
-            history_list[i] = np.matlib.repmat(history, nneuron_list[i], 1).T
-            max_histories_history = max(max_histories_history, history.shape[0])
-    else:
-        for i, history in enumerate(history_list):
-            nneuron_list[i] = history.shape[1]
-            max_histories_history = max(max_histories_history, history.shape[0])
-
-    max_histories_coupling, _, npop = coupling_mat.shape
-    nt = baseline_mat.shape[0]
-    pop_spikes = np.zeros((nt, npop, 1))
-    ind_spikes = [np.zeros((nt, nneuron_list[i])) for i in range(npop)]
-    log_firing_rate_pop_level = copy.deepcopy(baseline_mat[:,:,np.newaxis])  # np.newaxis doesn't create a new data array!!!
-    # t=0
-    log_firing_rate_ind_only_history_rcd = []
-    for ipop in range(npop):
-        log_firing_rate_ind_only_history_rcd.append(np.zeros((nt, nneuron_list[ipop])))
-        log_firing_rate_ind = log_firing_rate_pop_level[0, ipop, 0]*np.ones(nneuron_list[ipop]) \
-                            - np.log(nneuron_list[i])
-        log_firing_rate_ind_only_history = 0
-        log_firing_rate_ind += log_firing_rate_ind_only_history
-        ind_spikes[ipop][0, :] = np.random.poisson(np.exp(log_firing_rate_ind))
-        pop_spikes[0,ipop,0] = np.sum(ind_spikes[ipop][0, :])
-    
-    for t in range(1, nt):
-        nhistories = min(t, max_histories_coupling)
-        log_firing_rate_coupling = (coupling_mat[-nhistories:, :, :] * pop_spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
-        log_firing_rate_pop_level[t,:,0] += log_firing_rate_coupling
-        for ipop in range(npop):
-            log_firing_rate_ind = log_firing_rate_pop_level[t, ipop, 0]*np.ones(nneuron_list[ipop]) #- np.log(nneuron_list[ipop])
-            nhistories = min(t, max_histories_history)
-            log_firing_rate_ind_only_history = (history_list[ipop][-nhistories:,:] * ind_spikes[ipop][(t-nhistories):(t), :]).sum(axis=0)
-            log_firing_rate_ind += log_firing_rate_ind_only_history
-            log_firing_rate_ind = np.minimum(log_firing_rate_ind, MAX_FIRING_RATE)
-            ind_spikes[ipop][t, :] = np.random.poisson(np.exp(log_firing_rate_ind))
-            pop_spikes[t,ipop,0] = np.sum(ind_spikes[ipop][t, :])
-            log_firing_rate_ind_only_history_rcd[ipop][t, :] = log_firing_rate_ind_only_history
-
-    return pop_spikes.squeeze(), log_firing_rate_pop_level.squeeze(), log_firing_rate_ind_only_history_rcd
 
 #%% KS measurement
 def get_three_measure_entire_length(f, exp=False):
