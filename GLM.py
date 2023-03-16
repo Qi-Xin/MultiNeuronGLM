@@ -572,7 +572,7 @@ class PP_GLM():
                 y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
                 y = y_mat.mean(axis=1)
                 # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
-                one_sigma_ci = y_mat.std(axis=1)
+                one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
             if ci:
                 result_output.append([y,one_sigma_ci])
             else:
@@ -1034,6 +1034,7 @@ def linear_time_warping_single(t, f, sources, targets, verbose=True):
 #%% Simulation
 
 def simulate_baseline_coupling_refractory(model_list, nepoch=1):
+    MAX_FIRING_RATE = np.log(1000)
     nneuron = len(model_list)
     taus = np.array([model.tau for model in model_list])
     probe_list = model_list[0].dataset.selected_probes
@@ -1126,6 +1127,7 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
                 for ineuron in range(nneuron):
                     refractory[ineuron] = f_refractory_list[ineuron](recent_spike_sum[ineuron]/taus[ineuron])
                 log_firing_rate[t,:,0] += temp_log_firing_rate + refractory
+                # log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
                 spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
                 recent_spike_sum += spikes[t, :, 0]
 
@@ -1136,9 +1138,9 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
             spikes_rcd[:, iepoch*model_list[0].ntrial + itrial, :] = spikes
             for ineuron in range(nneuron):
                 peaks_rcd[0, iepoch*model_list[0].ntrial + itrial, ineuron] = \
-                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[:150, ineuron])[:, np.newaxis], std=5))
+                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[:150, ineuron])[:, np.newaxis], std=40))
                 peaks_rcd[1, iepoch*model_list[0].ntrial + itrial, ineuron] = \
-                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[150:, ineuron])[:, np.newaxis], std=5))
+                    np.nanargmax(utils.kernel_smoothing(np.exp(log_firing_rate[150:, ineuron])[:, np.newaxis], std=40))
                 
     return spikes_rcd, log_firing_rate_rcd, peaks_rcd
 
@@ -1971,19 +1973,19 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
     # num_basis_baseline = 30
     # penalty = 3e-1
     
-    num_f_refractory = 4
-    max_iter = 5
-    tau = 15
-    coupling_filter_params = {'peaks_max':26, 'num':3, 'nonlinear':0.9}
-    num_basis_baseline = 20
-    penalty = 5e-1
-
     # num_f_refractory = 4
     # max_iter = 5
     # tau = 15
-    # coupling_filter_params = {'peaks_max':20.2, 'num':3, 'nonlinear':0.5}
+    # coupling_filter_params = {'peaks_max':26, 'num':3, 'nonlinear':0.9}
     # num_basis_baseline = 20
     # penalty = 5e-1
+
+    num_f_refractory = 4
+    max_iter = 5
+    tau = 15
+    coupling_filter_params = {'peaks_max':20.2, 'num':3, 'nonlinear':0.5}
+    num_basis_baseline = 20
+    penalty = 5e-1
 
     # num_f_refractory = 4
     # max_iter = 5
@@ -2367,10 +2369,11 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_output[filter_index]>0:
-                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p={pvalue_output[filter_index]:.3f}', 
+                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p={pvalue_output[filter_index]:.5f}', 
                                 fontsize=10)
                     else:
-                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p<0.001', fontsize=10)
+                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=10)
+
 
 def corr(C):
     """
