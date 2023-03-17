@@ -63,6 +63,7 @@ class PP_GLM():
                 self.ntrial = self.select_trials.shape[0]
             self.npadding = npadding
             self.dataset = None
+            self.time_line = np.arange(self.nt)*1e-3
         else:
             self.dataset = dataset
             self.nt = self.dataset.nt
@@ -78,6 +79,7 @@ class PP_GLM():
             self.membership = membership
             self.condition_ids = condition_ids
             self.npadding = self.dataset.npadding
+            self.time_line = self.dataset.time_line
         self.effect_list = []
         self.basis_list = []
         self.basis_name = []
@@ -459,6 +461,7 @@ class PP_GLM():
             self.no_penalty.append(np.arange(int(no_penalty_start), int(no_penalty_end)))
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0):
+        self.use_warping = False
         if self.target is None:
             self.target = target
             if type(target) == str:
@@ -718,7 +721,7 @@ class PP_GLM():
             #         result_output[iselfeffect] += raw_result_output.reshape((self.nt, self.ntrial), order='F')
             #     else:
             #         raise ValueError("only support trial_coef and refractory in addition to inhomogeneous_baseline and coupling!")
-            # return result_output
+            # return result_outputinhomo
         
     def test(self, test_trials, use_all=False, verbose=False):
         if self.dataset is not None:
@@ -748,19 +751,36 @@ class PP_GLM():
         self.test_model.response = self.test_model.output.flatten('F')
         self.test_model.predictors = np.hstack(self.test_model.effect_list)
         self.test_model.results = self.results
-        self.test_model.log_lmbd = (self.test_model.predictors@self.test_model.results.params).\
-            reshape((self.test_model.nt, self.test_model.ntrial), order='F')
-        self.test_model.log_lmbd_ci = (self.test_model.predictors@self.test_model.results.bse).\
-            reshape((self.test_model.nt, self.test_model.ntrial), order='F')
-        self.test_model.nll = spike_trains_neg_log_likelihood(self.test_model.log_lmbd, self.test_model.output)
-        self.test_model.nll_trialwise = spike_trains_neg_log_likelihood(self.test_model.log_lmbd, self.test_model.output, trial_wise=True)
-        self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
-        return self.test_model.nll
+        
+        if self.use_warping==False:
+            self.test_model.log_lmbd = (self.test_model.predictors@self.test_model.results.params).\
+                reshape((self.test_model.nt, self.test_model.ntrial), order='F')
+            self.test_model.log_lmbd_ci = (self.test_model.predictors@self.test_model.results.bse).\
+                reshape((self.test_model.nt, self.test_model.ntrial), order='F')
+            self.test_model.nll = spike_trains_neg_log_likelihood(self.test_model.log_lmbd, self.test_model.output)
+            self.test_model.nll_trialwise = spike_trains_neg_log_likelihood(self.test_model.log_lmbd, self.test_model.output, trial_wise=True)
+            self.test_model.aic = self.test_model.predictors.shape[1] + self.test_model.nll
+            return self.test_model.nll
+        else:
+            inhomo_template = self.test_model.get_filter_output(trial_wise=False, ci=False)[0]
+            result_output = self.test_model.get_filter_output(trial_wise=True, ci=False)
+            inhomo = result_output[0]
+            total_output = np.vstack((result_output)).T
+            total_output = total_output.sum(axis=1)
+            minus_one_output = total_output - inhomo
+            best_shift, nll  = get_best_shift(self.test_model.time_line, inhomo_template, minus_one_output, 
+                                            self.test_model.response, self.test_model.nt, max_spike=self.max_spike, warp_interval=self.warp_interval, 
+                                            a=self.a, intecept=self.intecept)
+            return nll
+        
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
                                   no_penalty_term_penalty=0, acc_warping=False):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
+        
+        self.use_warping = True
+        self.warp_interval = warp_interval
         
         ALPHA = 0.5   # to smooth the optimization process
         BETA = 0.0   # to smooth the optimization process
@@ -797,11 +817,11 @@ class PP_GLM():
                     
                 # Update shifts (based on non-warping inhomo baseline)
                 if acc_warping is False:
-                    best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                    best_shift, nll  = get_best_shift(self.time_line, inhomo_template, minus_one_output, 
                                                     self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
                                                     a=self.a, intecept=self.intecept)
                 else:
-                    best_shift, nll  = get_best_shift(self.dataset.time_line, inhomo_template, minus_one_output, 
+                    best_shift, nll  = get_best_shift(self.time_line, inhomo_template, minus_one_output, 
                                                     self.response, self.nt, max_spike=self.max_spike, warp_interval=warp_interval, 
                                                     a=self.a, intecept=self.intecept, previous_shifts=self.shifts)
                 if iter==0:
@@ -814,7 +834,7 @@ class PP_GLM():
                 # if iter != max_iter-1:
                     # for i_interval in range(len(warp_interval)):
                         # self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
-                X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
+                X_baseline_warp = apply_warping_to_predictors(self.time_line, X_baseline_original, self.shifts, self.nt, 
                                                             warp_interval=warp_interval)
                 self.effect_list[i_effect] = X_baseline_warp
                 
@@ -831,7 +851,7 @@ class PP_GLM():
             self.shifts = fix_shifts
             for i_interval in range(len(warp_interval)):
                 self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
-            X_baseline_warp = apply_warping_to_predictors(self.dataset.time_line, X_baseline_original, self.shifts, self.nt, 
+            X_baseline_warp = apply_warping_to_predictors(self.time_line, X_baseline_original, self.shifts, self.nt, 
                                                         warp_interval=warp_interval)
             self.effect_list[i_effect] = X_baseline_warp
             
@@ -1124,7 +1144,7 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
 
                     if effect_type in ['inhomogeneous_baseline', ]:
                         baseline_mat[:, ineuron] = model.filters[ieffect]
-                        baseline_mat[:, ineuron] = apply_warping_to_predictors(model.dataset.time_line, 
+                        baseline_mat[:, ineuron] = apply_warping_to_predictors(model.time_line, 
                                                                                 baseline_mat[:, ineuron][:,None], 
                                                                                 model.shifts[itrial,:][None,:], 
                                                                                 model.nt).squeeze()
