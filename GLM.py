@@ -53,8 +53,16 @@ class PP_GLM():
         if dataset is None:
             self.nt = nt
             self.ntrial = ntrial
-            self.select_trials = np.arange(self.ntrial)
+            if select_trials is None:
+                self.select_trials = np.full(self.ntrial, True)
+            else:
+                self.select_trials = select_trials
+            if type(select_trials[0]) == np.bool_:
+                self.ntrial = self.select_trials.sum()
+            else:
+                self.ntrial = self.select_trials.shape[0]
             self.npadding = npadding
+            self.dataset = None
         else:
             self.dataset = dataset
             self.nt = self.dataset.nt
@@ -103,10 +111,6 @@ class PP_GLM():
         self.effect_type_list.append(effect_type)
         self.raw_input_list.append(raw_input)
         self.kwargs_list.append(kwargs)
-        
-        if type(raw_input) == np.ndarray:
-            if raw_input.shape[1] > self.ntrial:
-                raw_input = raw_input[:, self.select_trials]
             
         if effect_type == 'homogeneous_baseline':
             X_baseline = np.ones((self.nt*self.ntrial,1))
@@ -146,6 +150,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             pillow_basis = make_pillow_basis(**kwargs)
@@ -170,6 +175,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             
@@ -206,6 +212,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             num = kwargs.pop('num',10)
@@ -228,6 +235,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
@@ -258,6 +266,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
@@ -340,6 +349,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[:,self.select_trials]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             tau = kwargs.pop('tau',10)
@@ -389,6 +399,7 @@ class PP_GLM():
                 input_to_couple = input_to_couple[self.npadding:, :]
             elif type(raw_input) == np.ndarray:
                 input_to_couple = raw_input
+                input_to_couple = input_to_couple[:,self.select_trials]
             else:
                 raise ValueError("raw input must be either str like \"probeC\" or numpy.ndarray!")
             pillow_basis = make_pillow_basis(**kwargs)
@@ -456,7 +467,7 @@ class PP_GLM():
                                         self.dataset, target, 0, use_all=use_all)
                 self.output = self.output[:,self.select_trials]
             elif type(target) == np.ndarray:
-                self.output = target
+                self.output = target[:,self.select_trials]
             else:
                 raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
             if self.npadding is not None:
@@ -710,10 +721,14 @@ class PP_GLM():
             # return result_output
         
     def test(self, test_trials, use_all=False, verbose=False):
-        self.test_model = PP_GLM(dataset=self.dataset, 
-                           select_trials=test_trials, 
-                           membership=self.membership, 
-                           condition_ids=self.condition_ids)
+        if self.dataset is not None:
+            self.test_model = PP_GLM(dataset=self.dataset, 
+                                    select_trials=test_trials, 
+                                    membership=self.membership, 
+                                    condition_ids=self.condition_ids)
+        else:
+            self.test_model = PP_GLM(ntrial=self.ntrial, nt=self.nt, select_trials=test_trials)
+        
         if type(self.target) == str:
             # print(f"Assuming output is spike trains from {target}")
             self.test_model.output = utils.pooling_pop(self.test_model.membership, self.test_model.condition_ids, 
