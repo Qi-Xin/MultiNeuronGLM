@@ -2287,7 +2287,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.45*filter_length, 3.4*filter_amp, f'Inhomo baseline', fontsize=fontsize)
+                plt.text(-0.6*filter_length, 1.85*filter_amp, f'Inhomo baseline', fontsize=fontsize)
 
             if inference:
                 if pvalue_toplot[filter_index]<=0.05 and j!=-1:
