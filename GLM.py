@@ -2203,7 +2203,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
     filter_length = stationary_filter[1,2][0].shape[0]
-    filter_amp = 0.15
+    filter_amp = 0.075
     trial_length = V1.nt
 
     if inference:
