@@ -2197,13 +2197,12 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     
 def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
                                statistics_null_filter=None, ROI_filter=None, inference=True, 
-                               plot_baseline=True, plot_self=False):
+                               plot_baseline=True, plot_self=False, filter_amp=0.15, output=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
     filter_length = stationary_filter[1,2][0].shape[0]
-    filter_amp = 0.075
     trial_length = V1.nt
 
     if inference:
@@ -2216,7 +2215,10 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
 
     sns.reset_orig()
     # sns.set_theme()
-    plt.subplots(figsize=(15,10))
+    if output:
+        plt.subplots(figsize=(6.9,6.9))
+    else:
+        plt.subplots(figsize=(15,10))
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
             if j == -1 and (not plot_baseline):
@@ -2257,14 +2259,14 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.xticks([0, filter_length/2, filter_length])
                 plt.xlim([0, filter_length])
                 if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=fontsize)
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=fontsize)
                     
             if j==0:
                 plt.yticks(color='k')
                 plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=10)
                 
             if j==0:
-                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=fontsize)
+                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=fontsize)
             if i != 5:
                 plt.xticks(color='w')
             if i == 5:
@@ -2281,13 +2283,13 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
             
             if i==0 and j==2:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=fontsize)
+                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=fontsize)
             if i==1 and j==0:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=fontsize)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.6*filter_length, 1.85*filter_amp, f'Inhomo baseline', fontsize=fontsize)
+                plt.text(-0.6*filter_length, 0.28, f'Inhomo baseline', fontsize=fontsize)
 
             if inference:
                 if pvalue_toplot[filter_index]<=0.05 and j!=-1:
@@ -2386,7 +2388,7 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.2*filter_length, 0.55*filter_amp, f'Inhomo baseline', fontsize=fontsize)
+                plt.text(-0.2*filter_length, 0.28, f'Inhomo baseline', fontsize=fontsize)
             
             if inference:
                 if pvalue_output[filter_index]<=0.05 and j!=-1:
