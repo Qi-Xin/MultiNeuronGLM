@@ -2216,9 +2216,21 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     sns.reset_orig()
     # sns.set_theme()
     if output:
-        plt.subplots(figsize=(6.9,6.9))
+        plt.subplots(figsize=(6.9,4.6))
+        SMALL_SIZE = 5
+        MEDIUM_SIZE = 7
+        BIGGER_SIZE = 8
+        BIGGER_LW = 1
+        SMALL_LW = 0.75
+        utils.use_pdf_plot()
     else:
         plt.subplots(figsize=(15,10))
+        BIGGER_SIZE = 15
+        MEDIUM_SIZE = 15
+        SMALL_SIZE = 10
+        BIGGER_LW = 2
+        SMALL_LW = 1.5
+    
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
             if j == -1 and (not plot_baseline):
@@ -2256,40 +2268,44 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 # if i!=j and i_plot!=0:
                 plt.ylim([-filter_amp, filter_amp])
                 plt.yticks(color='w')
-                plt.xticks([0, filter_length/2, filter_length])
+                plt.xticks([0, filter_length])
                 plt.xlim([0, filter_length])
                 if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=fontsize)
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=MEDIUM_SIZE)
                     
             if j==0:
                 plt.yticks(color='k')
-                plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=10)
-                
-            if j==0:
-                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=fontsize)
+                plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=MEDIUM_SIZE)
+            if (j==1 and i==0):
+                plt.yticks(color='k')
+                plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+            if j != -1:
+                plt.axhline(0, ls='-', color='grey', lw=SMALL_LW, alpha=0.5)
             if i != 5:
                 plt.xticks(color='w')
             if i == 5:
-                plt.xlabel('time (ms)')
-            plt.grid()
+                plt.xlabel('time (ms)', fontsize=SMALL_SIZE)
+            
+            # plt.grid()
             
             if inference:
                 ins = ax.inset_axes([0.6,0.6,0.4,0.4])
-                sns.kdeplot(statistics_null_filter[filter_index], linewidth=2, ax=ins, fill=True)
-                ins.axvline(statistics_filter[filter_index], linewidth=1.5, color='r')
+                sns.kdeplot(statistics_null_filter[filter_index], linewidth=BIGGER_LW, ax=ins, fill=True)
+                ins.axvline(statistics_filter[filter_index], linewidth=SMALL_LW, color='r')
                 ins.set_xticks([])
                 ins.set_yticks([])
                 ins.set_ylabel('')
             
             if i==0 and j==2:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=fontsize)
+                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=MEDIUM_SIZE)
             if i==1 and j==0:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=fontsize)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=MEDIUM_SIZE)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.6*filter_length, 0.28, f'Inhomo baseline', fontsize=fontsize)
+                plt.text(-0.6*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
 
             if inference:
                 if pvalue_toplot[filter_index]<=0.05 and j!=-1:
@@ -2308,30 +2324,48 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[filter_index]>0:
                         plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.5f}', 
-                                fontsize=10)
+                                fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=10)
+                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 
-def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, statistics_null_output, ROI_output, inference=True):
+def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, 
+                               statistics_null_output, ROI_output, inference=True, output=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
     filter_length = V1.nt
     filter_amp = 1
+    inhomo_amp = [0.2, 0.1, 0.2, 0.2, 0.2, 0.2]
     trial_length = V1.nt
 
-    pvalue_output = {}
-    for i in range(len(probe_list)):
-        for j in range(-1, len(probe_list)):
-            filter_index = i,j
-            pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index][0]>statistics_null_output[filter_index]) \
-                /len(statistics_null_output[filter_index])
+    if inference:
+        pvalue_output = {}
+        for i in range(len(probe_list)):
+            for j in range(-1, len(probe_list)):
+                filter_index = i,j
+                pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index][0]>statistics_null_output[filter_index]) \
+                    /len(statistics_null_output[filter_index])
 
     sns.reset_orig()
     # sns.set_theme()
-    plt.subplots(figsize=(15,10))
+    if output:
+        plt.subplots(figsize=(6.9,4.6))
+        SMALL_SIZE = 5
+        MEDIUM_SIZE = 7
+        BIGGER_SIZE = 8
+        BIGGER_LW = 1
+        SMALL_LW = 0.75
+        utils.use_pdf_plot()
+    else:
+        plt.subplots(figsize=(15,10))
+        BIGGER_SIZE = 15
+        MEDIUM_SIZE = 15
+        SMALL_SIZE = 10
+        BIGGER_LW = 2
+        SMALL_LW = 1.5
+
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
             i_plot = transfer_ij[i]
@@ -2356,6 +2390,8 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
                 plt.xticks([0, trial_length/2, trial_length])
                 plt.xlim([0, trial_length])
+                plt.ylim([0, inhomo_amp[i]])
+                plt.yticks([0, inhomo_amp[i]])
                 
             else:
                 plt.plot(x, y,label='stationary', color='b')
@@ -2366,29 +2402,32 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.xticks([0, filter_length/2, filter_length])
                 plt.xlim([0, filter_length])
                 if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=fontsize)
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=MEDIUM_SIZE)
                     
             if j==0:
                 plt.yticks(color='k')
-                plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=10)
-            if j==0:
-                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=fontsize)
+                plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=MEDIUM_SIZE)
+            if (j==1 and i==0):
+                plt.yticks(color='k')
+                plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+            if j != -1:
+                plt.axhline(0, ls='-', color='grey', lw=SMALL_LW, alpha=0.5)
             if i != 5:
                 plt.xticks(color='w')
             if i == 5:
                 plt.xlabel('time (ms)')
-            plt.grid()
-            
+            # plt.grid()
             
             if i==0 and j==2:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=fontsize)
+                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=MEDIUM_SIZE)
             if i==1 and j==0:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=fontsize)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=MEDIUM_SIZE)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.2*filter_length, 0.28, f'Inhomo baseline', fontsize=fontsize)
+                plt.text(-0.2*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
             
             if inference:
                 if pvalue_output[filter_index]<=0.05 and j!=-1:
@@ -2407,9 +2446,9 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
         #             ax.set_facecolor('yellow')
                     if pvalue_output[filter_index]>0:
                         plt.text(0.57*filter_length, 0.75*filter_amp, f'p={pvalue_output[filter_index]:.5f}', 
-                                fontsize=10)
+                                fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=10)
+                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 
 def corr(C):

@@ -152,6 +152,24 @@ THALAMUS_AREA = ['TH', 'LGd', 'LGv', 'LP', 'IGL', 'PO', 'POL', 'SGN',
 VISUAL_AREA = ['VIS', 'VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl',
                'VISmmp', 'VISmma', 'VISli']
 
+from matplotlib import rcParams, rcParamsDefault
+def use_pdf_plot():
+    SMALL_SIZE = 5
+    MEDIUM_SIZE = 7
+    BIGGER_SIZE = 8
+    rcParams['lines.linewidth'] = 1
+    rcParams['axes.labelsize'] = MEDIUM_SIZE
+    rcParams['axes.titlesize'] = BIGGER_SIZE
+    rcParams['font.size'] = MEDIUM_SIZE
+    rcParams['xtick.major.size'] = SMALL_SIZE
+    rcParams['ytick.major.size'] = SMALL_SIZE
+    rcParams['figure.titlesize'] = MEDIUM_SIZE
+    rcParams['legend.fontsize'] = SMALL_SIZE
+    
+def use_default_plot():
+    sns.reset_orig()
+    rcParams.update(rcParamsDefault)
+
 def color_by_brain_area(ccf_structure, colortype='normal'):
     """Assign a color for a brain area."""
     if ccf_structure in VISUAL_AREA:
