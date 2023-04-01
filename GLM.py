@@ -1112,44 +1112,6 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
     spikes = spikes.squeeze()
     return spikes, log_firing_rate
 
-#%% KS measurement
-def get_three_measure_entire_length(f, exp=False):
-    if exp==False:
-        if np.any(f<=0):
-            exp = True
-            print("Setting f to exp(f) for nonnegativity!")
-    if exp:
-        f = np.exp(f)
-    pdf = f/f.sum()
-    cdf = np.cumsum(pdf)
-    pdfUniform = 1/len(pdf) * np.ones(len(pdf))
-    cdfUniform = np.cumsum(pdfUniform)
-    # KL = rel_entr(pdf, pdfUniform).sum()
-    KL = 0
-    KS = np.max(np.abs(cdf-cdfUniform))
-    # Wasser = np.sum(np.abs(cdf-cdfUniform)*1/len(pdf))
-    Wasser = 0
-    return np.array([KL, KS, Wasser])
-
-def get_measure_func(measure, f):
-    def get_measure(l, win, f=f, measure=measure):
-        r = l + win
-        # if r > 500:
-        #     r = 500
-        return get_three_measure_entire_length(f[int(l):int(r)], exp=True)[measure]
-    return get_measure
-
-def get_best_time_range(total_output, minus_one_output, measure, time_range):
-    total_output_func = get_measure_func(measure, total_output)
-    minus_one_output_func = get_measure_func(measure, minus_one_output)
-    nt = time_range[1] - time_range[0]
-    kl = np.full((nt, nt), -np.inf)
-    for l in range(time_range[0], time_range[1]):
-        for r in range(l+1, time_range[1]):
-            kl[l-time_range[0], r-time_range[0]] = total_output_func(l,r-l) - minus_one_output_func(l,r-l)
-    best_l, best_r = np.where(kl==kl.max())
-    return [best_l[0]+time_range[0], best_r[0]+time_range[0]]
-
 #%% Plotting GLM
 def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None, linewidth=1):
     start_col = 0
