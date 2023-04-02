@@ -553,11 +553,13 @@ class PP_GLM():
                 result_filter.append(y)
         return result_filter
     
-    def get_filter_output(self, trial_wise=False, ci=False):
+    def get_filter_output(self, intermediate=True, trial_wise=False, ci=False):
+        ### The function is used for both fitting fit_time_warping and for display final plot. 
         ### say there are one inhomo baseline and three coupling filters, 
         ### result_output[2] contains the information for the second coupling filters
         ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
         ### if ci==False, result_output[2] is the filter
+        assert intermediate==False or (intermediate==True and ci==False) 
         effect_id_list = np.arange(len(self.basis_name))
         result_output = []
         for effect_id in effect_id_list:
@@ -566,34 +568,42 @@ class PP_GLM():
                 start_col += (self.effect_list[previous_id]).shape[1]
             nbasis = (self.effect_list[effect_id]).shape[1]
             end_col = start_col + nbasis
-
-            # estimated effect output
-            coef = self.results.params[start_col:end_col]
-            if self.basis_name[effect_id] in ["inhomogeneous_baseline"]:
-                predicters_temp = self.basis_list[effect_id]
-                if trial_wise:
-                    predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
-                coef = self.results.params[start_col:end_col]
-                y = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                se = self.results.bse[start_col:end_col]
-                one_sigma_ci = (predicters_temp@se[:,np.newaxis]).squeeze()
-                if trial_wise:
-                    y_all_trial = y
-            else:
-                predicters_temp = self.effect_list[effect_id]
-                coef = self.results.params[start_col:end_col]
-                y_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
-                y_mat = y_all_trial.reshape((self.nt, self.ntrial), order='F')
-                y = y_mat.mean(axis=1)
-                # one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
-                one_sigma_ci = y_mat.std(axis=1)/np.sqrt(self.ntrial)
-            if ci:
-                result_output.append([y,one_sigma_ci])
-            else:
-                if trial_wise:
-                    result_output.append(y_all_trial)
+            
+            if intermediate:
+                # If for fitting fit_time_warping
+                if self.basis_name[effect_id] in ["inhomogeneous_baseline"]:
+                    predicters_temp = self.basis_list[effect_id]
+                    if trial_wise:
+                        predicters_temp = np.tile(predicters_temp, (self.ntrial, 1))
+                    coef = self.results.params[start_col:end_col]
+                    output = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                    if trial_wise:
+                        output_all_trial = output
                 else:
-                    result_output.append(y)
+                    predicters_temp = self.effect_list[effect_id]
+                    coef = self.results.params[start_col:end_col]
+                    output_all_trial = (predicters_temp@coef[:,np.newaxis]).squeeze()
+                    output_mat = output_all_trial.reshape((self.nt, self.ntrial), order='F')
+                    output = output_mat.mean(axis=1)
+            else:
+                # If for final display
+                coef = self.results.params[start_col:end_col]
+                inv_hessian = self.results.inv_hessian[start_col:end_col, start_col:end_col]
+                effect = self.effect_list[effect_id]
+                trial_mean = effect.reshape((self.nt, self.ntrial, nbasis), order='F').mean(axis=1)
+                output_all_trial = (effect@coef[:,np.newaxis]).squeeze()
+                output_mat = output_all_trial.reshape((self.nt, self.ntrial), order='F')
+                output = output_mat.mean(axis=1)
+                one_sigma_ci_from_coef = np.sqrt(np.diag(trial_mean@inv_hessian@trial_mean.T))
+                one_sigma_ci_from_trial = output_mat.std(axis=1)/np.sqrt(self.ntrial)
+                one_sigma_ci = one_sigma_ci_from_coef + one_sigma_ci_from_trial
+            if ci:
+                result_output.append([output,one_sigma_ci])
+            else:
+                if trial_wise:
+                    result_output.append(output_all_trial)
+                else:
+                    result_output.append(output)
         return result_output
     
     def get_filter_output_merge(self, trial_wise=False, ci=False):
@@ -2199,10 +2209,10 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[filter_index]>0:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.5f}', 
+                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.5f}', 
                                 fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.58*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
+                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, 
@@ -2212,8 +2222,8 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
     filter_length = V1.nt
-    filter_amp = 1
-    inhomo_amp = [0.2, 0.1, 0.2, 0.2, 0.2, 0.2]
+    filter_amp = 1.3
+    inhomo_amp = [0.25, 0.1, 0.25, 0.25, 0.25, 0.15]
     trial_length = V1.nt
 
     if inference:
@@ -2278,12 +2288,12 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.xticks([0, filter_length/2, filter_length])
                 plt.xlim([0, filter_length])
                 if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From: {name_list[j]}', fontsize=MEDIUM_SIZE)
+                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=MEDIUM_SIZE)
                     
             if j==0:
                 plt.yticks(color='k')
                 plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
-                plt.text(-2.1*filter_length, 0, f'To: {name_list[i]}', fontsize=MEDIUM_SIZE)
+                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=MEDIUM_SIZE)
             if (j==1 and i==0):
                 plt.yticks(color='k')
                 plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
@@ -2297,10 +2307,10 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
             
             if i==0 and j==2:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To: V1', fontsize=MEDIUM_SIZE)
+                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=MEDIUM_SIZE)
             if i==1 and j==0:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From: V1', fontsize=MEDIUM_SIZE)
+                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=MEDIUM_SIZE)
             if i==0 and j==-1:
                 plt.subplot(6, 7, i*7+j+1+1, frameon=True)
                 plt.text(-0.2*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
@@ -2321,10 +2331,10 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_output[filter_index]>0:
-                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p={pvalue_output[filter_index]:.5f}', 
+                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p={pvalue_output[filter_index]:.5f}', 
                                 fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.57*filter_length, 0.75*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=SMALL_SIZE)
+                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 
 def corr(C):
