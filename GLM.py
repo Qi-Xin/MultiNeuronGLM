@@ -2175,7 +2175,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
             
             # plt.grid()
             
-            if inference:
+            if inference and j!=-1:
                 ins = ax.inset_axes([0.6,0.6,0.4,0.4])
                 sns.kdeplot(statistics_null_filter[filter_index], linewidth=BIGGER_LW, ax=ins, fill=True)
                 ins.axvline(statistics_filter[filter_index], linewidth=SMALL_LW, color='r')

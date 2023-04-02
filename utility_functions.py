@@ -154,9 +154,23 @@ VISUAL_AREA = ['VIS', 'VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl',
 
 from matplotlib import rcParams, rcParamsDefault
 def use_pdf_plot():
+    sns.reset_orig()
     SMALL_SIZE = 5
     MEDIUM_SIZE = 7
     BIGGER_SIZE = 8
+    rcParams['lines.linewidth'] = 1
+    rcParams['axes.labelsize'] = MEDIUM_SIZE
+    rcParams['axes.titlesize'] = BIGGER_SIZE
+    rcParams['font.size'] = MEDIUM_SIZE
+    rcParams['xtick.major.size'] = SMALL_SIZE
+    rcParams['ytick.major.size'] = SMALL_SIZE
+    rcParams['figure.titlesize'] = MEDIUM_SIZE
+    rcParams['legend.fontsize'] = SMALL_SIZE
+    
+def use_self_plot():
+    SMALL_SIZE = 5
+    MEDIUM_SIZE = 7
+    BIGGER_SIZE = 25
     rcParams['lines.linewidth'] = 1
     rcParams['axes.labelsize'] = MEDIUM_SIZE
     rcParams['axes.titlesize'] = BIGGER_SIZE
