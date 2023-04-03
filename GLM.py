@@ -992,7 +992,7 @@ def linear_time_warping_single(t, f, sources, targets, verbose=True):
     
 #%% Simulation
 
-def simulate_baseline_coupling_refractory(model_list, nepoch=1):
+def simulate_baseline_coupling_refractory(model_list, nepoch=1, verbose=False, offset=0):
     MAX_FIRING_RATE = np.log(1000)
     nneuron = len(model_list)
     taus = np.array([model.tau for model in model_list])
@@ -1044,7 +1044,8 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
                 new_f_refractory_xx = np.arange(f_refractory_xx.shape[0]+50)*dt
                 # The end point, which is used to get the parameter k of k*x**2
                 last_point = [f_refractory_xx[-1], f_refractory_vec[-1]]
-                quadratic_refractory = new_f_refractory_xx**2*(last_point[1]/last_point[0]**2)/2 + last_point[1]/2
+                # quadratic_refractory = new_f_refractory_xx**2*(last_point[1]/last_point[0]**2)/2 + last_point[1]/2
+                quadratic_refractory = new_f_refractory_xx**2*(last_point[1]/last_point[0]**2)
                 # Get the longer f_refractory_vec in discrete form
                 new_f_refractory_vec = copy.deepcopy(quadratic_refractory)
                 new_f_refractory_vec[0:len(f_refractory_vec)] = f_refractory_vec
@@ -1054,7 +1055,8 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
                                                           kind='cubic', 
                                                           fill_value="extrapolate")
                 f_refractory_list.append(f_refractory)
-                plt.plot(new_f_refractory_vec)
+                if verbose:
+                    plt.plot(new_f_refractory_vec)
 
     for iepoch in tqdm( range(nepoch) ):
         for itrial in range(model_list[0].ntrial):
@@ -1072,7 +1074,7 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1):
                                                                                 baseline_mat[:, ineuron][:,None], 
                                                                                 model.shifts[itrial,:][None,:], 
                                                                                 model.nt).squeeze()
-                        baseline_mat[:, ineuron] += model.results.params[model.trial_coef_start+itrial]
+                        baseline_mat[:, ineuron] += model.results.params[model.trial_coef_start+itrial] + offset
 
             log_firing_rate = baseline_mat[:,:,np.newaxis]
             spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
@@ -1115,7 +1117,7 @@ def simulate_baseline_coupling(baseline_mat, coupling_mat):
         nhistories = min(t, max_histories)
         temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
         log_firing_rate[t,:,0] += temp_log_firing_rate
-        # log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
+        log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
         spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
     
     log_firing_rate = log_firing_rate.squeeze()
