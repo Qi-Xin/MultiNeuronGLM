@@ -311,7 +311,7 @@ def plot_ci(input, x=None, label=None, color='b', exp=False, center=False, linew
         x = np.arange(len(y))
     if exp:
         plt.plot(x, np.exp(y.squeeze()),label=label, color=color, linewidth=linewidth)
-        plt.fill_between(x, np.exp((y-ci)), np.exp((y+ci)), color=color, alpha=.3)
+        plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color=color, alpha=.3)
     else:
         plt.plot(x, y.squeeze()-center,label=label, color=color, linewidth=linewidth)
         plt.fill_between(x, (y-2*ci)-center, (y+2*ci)-center, color=color, alpha=.3)
