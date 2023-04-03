@@ -2216,7 +2216,6 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                     else:
                         plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
-
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, 
                                statistics_null_output, ROI_output, inference=True, output=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
@@ -2401,3 +2400,126 @@ def partial_corr(C):
             P_corr[j, i] = corr
         
     return P_corr
+
+def toy_model_fr(features, time_line):
+    log_fr_baseline = np.log(features["baseline"])
+    log_fr_stimulus = features["bump_amp"] *np.exp(-((time_line-features["bump_center"])/features["bump_wid"])**2)
+    log_fr = log_fr_baseline + log_fr_stimulus
+    features["log_fr"] = log_fr
+    features["fr"] = np.exp(log_fr)
+
+def toy_model_fr_warping(features, time_line):
+    log_fr_baseline = np.log(features["baseline"])
+    log_fr_stimulus = features["bump_amp"] *np.exp(-((time_line[:, np.newaxis]- \
+                                                      features["bump_center"][np.newaxis, :])/features["bump_wid"])**2)
+    log_fr = log_fr_baseline + log_fr_stimulus
+    features["log_fr"] = log_fr
+    features["fr"] = np.exp(log_fr)
+
+def generate_spike_train(fr, rep=1):
+    from numpy import matlib
+    if fr.ndim == 1:
+        return np.random.poisson(lam=np.matlib.repmat(fr[:,np.newaxis],1,rep), size=None)
+    else:
+        return np.random.poisson(lam=np.matlib.repmat(fr,1,rep), size=None)
+    
+def get_p():
+    from sklearn.model_selection import KFold
+    from scipy.stats import ranksums
+    nfold = 10
+    
+    test_nll_full = []
+    test_nll_nest = []
+    test_nll_full_pop = []
+    test_nll_nest_pop = []
+    nll_diff = 0
+    nll_diff_pop = 0
+
+    source = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.3, "bump_wid": 20}
+    target = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.3, "bump_wid": 20}
+    bump_center_mean = [240, 260]
+    bump_center_cov = np.array([[3600, 3600*0.9], [3600*0.9, 3600]])
+
+    nneuron = 10
+    nt = 500
+    ntrial = 500
+
+    spike_trains_source = []
+    spike_trains_target = []
+    time_line = np.arange(nt)
+    bump_centers = np.random.multivariate_normal(bump_center_mean, bump_center_cov, size=ntrial)
+    source["bump_center"] = bump_centers[:, 0]
+    target["bump_center"] = bump_centers[:, 1]
+
+    for ineuron in range(nneuron):
+        toy_model_fr_warping(source, time_line)
+        spike_trains_source.append( generate_spike_train(source["fr"]) )
+        toy_model_fr_warping(target, time_line)
+        spike_trains_target.append( generate_spike_train(target["fr"]) )
+
+    kf = KFold(n_splits=nfold)
+    for ifold, (train_index, test_index) in enumerate(kf.split(np.ones(ntrial))):
+
+        training_trials = np.array( [False]*ntrial )
+        training_trials[train_index] = True
+        test_trials = np.logical_not(training_trials)
+
+        ### Single neuron level model
+        for output_spike_train in spike_trains_target:
+
+            model_full = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
+            model_full.add_effect("inhomogeneous_baseline", num=20)
+            for input_spike_train in spike_trains_source:
+                model_full.add_effect("coupling", raw_input=input_spike_train, num=3, peaks_max=30, nonlinear=1)
+            model_full.fit(target=output_spike_train, method='mine', penalty=1e-2, verbose=False)
+            test_nll_full.append( model_full.test(test_trials) )
+
+            model_nest = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
+            model_nest.add_effect("inhomogeneous_baseline", num=20)
+            model_nest.fit(target=output_spike_train, method='mine', penalty=1e-2, verbose=False)
+            test_nll_nest.append( model_nest.test(test_trials) )
+            nll_diff += model_nest.nll - model_full.nll
+
+        ### Population level model
+        output_spike_train_pool = np.zeros((nt, ntrial))
+        for output_spike_train in spike_trains_target:
+            output_spike_train_pool += output_spike_train
+        input_spike_train_pool = np.zeros((nt, ntrial))
+        for input_spike_train in spike_trains_source:
+            input_spike_train_pool += input_spike_train
+
+        model_full_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
+        model_full_pop.add_effect("inhomogeneous_baseline", num=20)
+        model_full_pop.add_effect("coupling", raw_input=input_spike_train_pool, num=3, peaks_max=30, nonlinear=1)
+        model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, warp_interval=[[0, 0.5]], 
+                                             method='mine', penalty=1e-2, verbose=False)
+        test_nll_full_pop.append( model_full_pop.test(test_trials) )
+
+        model_nest_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
+        model_nest_pop.add_effect("inhomogeneous_baseline", num=20)
+        model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, warp_interval=[[0, 0.5]], 
+                                             method='mine', penalty=1e-2, verbose=False)
+        test_nll_nest_pop.append( model_nest_pop.test(test_trials) )
+        nll_diff_pop += model_nest_pop.nll - model_full_pop.nll
+
+    return ranksums( test_nll_full, test_nll_nest, alternative='less'), \
+           ranksums( test_nll_full_pop, test_nll_nest_pop, alternative='less')
+
+def get_ps():
+    import multiprocessing
+    import os
+
+    PROCESSES = 10
+    ntimes = 10
+    result = []
+    result_pop = []
+
+    with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
+        ress = [pool.apply_async(get_p) 
+                    for i_null in np.arange(ntimes)]
+        pool.close()
+        for res in ress:
+            result_temp, result_pop_temp = res.get()
+            result.append(result_temp)
+            result_pop.append(result_pop_temp)
+    return result, result_pop
