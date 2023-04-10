@@ -285,12 +285,16 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_al
     pooled_spike_train = np.zeros((nt, spike_train.shape[1]))
     
     for itrial in range(spike_train.shape[1]):
-        trial = spike_train.columns[itrial]
-        current_condition = condition_list.loc[trial]
-        current_membership = membership[np.where(condition_ids==current_condition)[0][0]]
-        idx = current_membership[(current_membership['probe']==probe_name) \
-            & (current_membership['group_id']==group_id)].index.values
-        if idx.sum() == 0 or use_all==True:
+        try:
+            trial = spike_train.columns[itrial]
+            current_condition = condition_list.loc[trial]
+            current_membership = membership[np.where(condition_ids==current_condition)[0][0]]
+            idx = current_membership[(current_membership['probe']==probe_name) \
+                & (current_membership['group_id']==group_id)].index.values
+            done = True
+        except:
+            done = False
+        if use_all==True or done==False or idx.sum() == 0:
             # if don't get any group information in 'membership', just use all neurons 
             idx = dataset._session.units[
                 dataset._session.units['ecephys_structure_acronym'].isin(VISUAL_AREA) &
