@@ -41,7 +41,8 @@ class PP_GLM():
                  condition_ids=None, 
                  nt=None, 
                  ntrial=None,
-                 npadding=None):
+                 npadding=None, 
+                 fps=1000):
         """Initialize PP_GLM 
 
         Args:
@@ -64,9 +65,11 @@ class PP_GLM():
             self.npadding = npadding
             self.dataset = None
             self.time_line = np.arange(self.nt)*1e-3
+            self.fps = fps
         else:
             self.dataset = dataset
             self.nt = self.dataset.nt
+            self.fps = self.dataset.fps
             
             if select_trials is None:
                 self.select_trials = np.full(dataset.ntrial, True)
@@ -187,7 +190,7 @@ class PP_GLM():
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
-                temp *= np.exp(-1000.0/self.dataset.fps/tau)
+                temp *= np.exp(-1000.0/self.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
             
@@ -246,7 +249,7 @@ class PP_GLM():
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
-                temp *= np.exp(-1000.0/self.dataset.fps/tau)
+                temp *= np.exp(-1000.0/self.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
             
@@ -276,7 +279,7 @@ class PP_GLM():
             refractory_spikes = np.zeros_like(input_to_couple)
             temp = refractory_spikes[0, :]
             for t in range(1, input_to_couple.shape[0]):
-                temp *= np.exp(-1000.0/self.dataset.fps/tau)
+                temp *= np.exp(-1000.0/self.fps/tau)
                 refractory_spikes[t, :] = temp
                 temp += input_to_couple[t, :]
 
@@ -559,7 +562,9 @@ class PP_GLM():
         ### result_output[2] contains the information for the second coupling filters
         ### if ci==True, result_output[2][0] is the filter, result_output[2][1] is the ci
         ### if ci==False, result_output[2] is the filter
-        assert intermediate==False or (intermediate==True and ci==False) 
+        if ci==True:
+            intermediate = False
+        # assert intermediate==False or (intermediate==True and ci==False) 
         effect_id_list = np.arange(len(self.basis_name))
         result_output = []
         for effect_id in effect_id_list:
@@ -1081,7 +1086,7 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1, verbose=False, o
             recent_spike_sum = copy.deepcopy(spikes[0, :, 0])
 
             for t in range(1, nt):
-                recent_spike_sum *= np.exp(-1000.0/model_list[0].dataset.fps/taus)
+                recent_spike_sum *= np.exp(-1000.0/model_list[0].fps/taus)
                 nhistories = min(t, max_histories)
                 temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
                 refractory = np.zeros(nneuron)
@@ -2196,7 +2201,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.text(-0.6*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
 
             if inference:
-                if pvalue_toplot[filter_index]<=0.05 and j!=-1:
+                if pvalue_toplot[filter_index]<=0.1 and j!=-1:
                     # change yellow to ROI
                     stats_list = []
                     for ii, ROI in enumerate(ROI_filter[filter_index]):
