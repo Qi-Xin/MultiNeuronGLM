@@ -18,13 +18,7 @@ import numpy as np
 # sns.set_theme()
 sns.set_theme(style="white")
 # sns.set_style('whitegrid')
-
-# Load selected group_id
-import pickle
-with open('group_id_79/membership_79.pickle', 'rb') as handle:
-    membership = pickle.load(handle)
-with open('group_id_79/condition_ids_79.pickle', 'rb') as handle:
-    condition_ids = pickle.load(handle)
+   
 
 if __name__ == "__main__":
     # freeze_support()
@@ -53,6 +47,51 @@ if __name__ == "__main__":
     V1.get_trial_metric_per_unit_per_trial()
     # V1.get_trial_metric_per_unit_per_trial(metric_type='spike_times')
     V1.get_running(method="mine")
+
+
+    # Load selected group_id
+    # import pickle
+    # with open('group_id_79/membership_79.pickle', 'rb') as handle:
+    #     membership = pickle.load(handle)
+    # with open('group_id_79/condition_ids_79.pickle', 'rb') as handle:
+    #     condition_ids = pickle.load(handle)
+        
+    # Select top 20% of neurons as cross-pop
+    probe_list = V1.selected_probes
+    # condition_ids = [249, 256, 257, 260, 261, 268, 270, 274, 275, 278, 280, 281, 284]
+    condition_ids = [275, 246, 268, 270, 284, 274, 249, 263, 261, 286, 258, 278, 267, 280, 256, 260, 257, 281]
+    # condition_ids = [246, 247, 248, 249, 250, 251, 252, 253, 255, 256, 257, 258, 259, 260, 261, 
+    #                   262, 263, 264, 265, 266, 267, 268, 269, 271, 272, 274, 275, 276, 277,
+    #                   278, 279, 280, 281, 282, 283, 284, 285, 286, 270]
+    membership = []
+    spike_train = V1.spike_train
+    for current_condition in condition_ids:
+        submembership_list = []
+        for probe_name in probe_list:
+            idx = V1._session.units[
+                V1._session.units['ecephys_structure_acronym'].isin(utils.VISUAL_AREA) &
+                V1._session.units['probe_description'].isin([probe_name])].index.values
+            submembership = pd.DataFrame(index=idx)
+            submembership.index.name = "unit_ids"
+            submembership["probe"] = probe_name
+            submembership["group_id"] = [-1]*len(idx)
+            submembership["spike_count"] = [0]*len(idx)
+            
+            trial_ids = V1.presentation_table[V1.presentation_table['stimulus_condition_id']==current_condition].\
+                index.values
+            for neuron in idx:
+                for trial_id in trial_ids:
+                    submembership.loc[neuron, "spike_count"] += np.sum(spike_train.loc[neuron][trial_id])
+            cutoff = np.quantile(submembership["spike_count"].values, 0.8)
+            for neuron in idx:
+                if submembership.loc[neuron, "spike_count"] >= cutoff:
+                    submembership.loc[neuron, "group_id"] = 0
+                else:
+                    submembership.loc[neuron, "group_id"] = 1
+            submembership_list.append(submembership)
+        current_membership = pd.concat(submembership_list)
+        membership.append(current_membership)
+
 
     # # The following hyperparameters turned out to be the best
     # num_f_refractory = 4
