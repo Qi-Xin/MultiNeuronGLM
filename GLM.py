@@ -2430,7 +2430,7 @@ def generate_spike_train(fr, rep=1):
     
 def get_p():
     from sklearn.model_selection import KFold
-    from scipy.stats import ranksums
+    from scipy.stats import wilcoxon
     nfold = 10
     
     test_nll_full = []
@@ -2440,14 +2440,14 @@ def get_p():
     nll_diff = 0
     nll_diff_pop = 0
 
-    source = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.3, "bump_wid": 20}
-    target = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.3, "bump_wid": 20}
+    source = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.0, "bump_wid": 20}
+    target = {"baseline": 0.01, "bump_center": np.nan, "bump_amp": 2.0, "bump_wid": 20}
     bump_center_mean = [240, 260]
-    bump_center_cov = np.array([[3600, 3600*0.9], [3600*0.9, 3600]])
+    bump_center_cov = np.array([[2500, 2500*0.8], [2500*0.8, 2500]])
 
     nneuron = 10
     nt = 500
-    ntrial = 500
+    ntrial = 100
 
     spike_trains_source = []
     spike_trains_target = []
@@ -2476,12 +2476,16 @@ def get_p():
             model_full.add_effect("inhomogeneous_baseline", num=20)
             for input_spike_train in spike_trains_source:
                 model_full.add_effect("coupling", raw_input=input_spike_train, num=3, peaks_max=30, nonlinear=1)
-            model_full.fit(target=output_spike_train, method='mine', penalty=1e-2, verbose=False)
+            for input_spike_train in spike_trains_target:
+                model_full.add_effect("coupling", raw_input=input_spike_train, num=3, peaks_max=30, nonlinear=1)
+            model_full.fit(target=output_spike_train, method='mine', penalty=1e0, verbose=False)
             test_nll_full.append( model_full.test(test_trials) )
 
             model_nest = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
             model_nest.add_effect("inhomogeneous_baseline", num=20)
-            model_nest.fit(target=output_spike_train, method='mine', penalty=1e-2, verbose=False)
+            for input_spike_train in spike_trains_target:
+                model_nest.add_effect("coupling", raw_input=input_spike_train, num=3, peaks_max=30, nonlinear=1)
+            model_nest.fit(target=output_spike_train, method='mine', penalty=1e0, verbose=False)
             test_nll_nest.append( model_nest.test(test_trials) )
             nll_diff += model_nest.nll - model_full.nll
 
@@ -2496,19 +2500,21 @@ def get_p():
         model_full_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
         model_full_pop.add_effect("inhomogeneous_baseline", num=20)
         model_full_pop.add_effect("coupling", raw_input=input_spike_train_pool, num=3, peaks_max=30, nonlinear=1)
+        model_full_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=3, peaks_max=30, nonlinear=1)
         model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, warp_interval=[[0, 0.5]], 
-                                             method='mine', penalty=1e-2, verbose=False)
+                                                method='mine', penalty=1e-2, verbose=False)
         test_nll_full_pop.append( model_full_pop.test(test_trials) )
 
         model_nest_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=training_trials)
         model_nest_pop.add_effect("inhomogeneous_baseline", num=20)
+        model_nest_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=3, peaks_max=30, nonlinear=1)
         model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, warp_interval=[[0, 0.5]], 
-                                             method='mine', penalty=1e-2, verbose=False)
+                                                method='mine', penalty=1e-2, verbose=False)
         test_nll_nest_pop.append( model_nest_pop.test(test_trials) )
         nll_diff_pop += model_nest_pop.nll - model_full_pop.nll
 
-    return ranksums( test_nll_full, test_nll_nest, alternative='less'), \
-           ranksums( test_nll_full_pop, test_nll_nest_pop, alternative='less')
+    return wilcoxon( test_nll_full, test_nll_nest, alternative='less'), \
+           wilcoxon( test_nll_full_pop, test_nll_nest_pop, alternative='less')
 
 def get_ps():
     import multiprocessing

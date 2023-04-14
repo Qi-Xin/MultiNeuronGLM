@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 import numpy as np
+import pickle
 # sns.set_theme()
 sns.set_theme(style="white")
 # sns.set_style('whitegrid')
@@ -50,7 +51,7 @@ if __name__ == "__main__":
 
 
     # Load selected group_id
-    # import pickle
+
     # with open('group_id_79/membership_79.pickle', 'rb') as handle:
     #     membership = pickle.load(handle)
     # with open('group_id_79/condition_ids_79.pickle', 'rb') as handle:
