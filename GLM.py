@@ -2221,8 +2221,8 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                     else:
                         plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
-def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output, 
-                               statistics_null_output, ROI_output, inference=True, output=False):
+def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output=None, 
+                               statistics_null_output=None, ROI_output=None, inference=True, output=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
