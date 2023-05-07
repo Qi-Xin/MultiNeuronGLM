@@ -2163,23 +2163,35 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.yticks(color='w')
                 plt.xticks([0, filter_length])
                 plt.xlim([0, filter_length])
-                if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=MEDIUM_SIZE)
-                    
-            if j==0:
-                plt.yticks(color='k')
-                plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
-                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=MEDIUM_SIZE)
-            if (j==1 and i==0):
-                plt.yticks(color='k')
-                plt.text(-15, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+
+            # Add xaxis to know where is above zero and where is below zero. 
             if j != -1:
                 plt.axhline(0, ls='-', color='grey', lw=SMALL_LW, alpha=0.5)
-            if i != 5:
-                plt.xticks(color='w')
+            # Only display "time (ms)" at the bottom row. 
             if i == 5:
                 plt.xlabel('time (ms)', fontsize=SMALL_SIZE)
-            
+            else:
+                plt.xticks(color='w')
+            # Show amplitute for the most left panels of coupling filters. 
+            if j==0 or (j==1 and i==0):
+                plt.yticks(color='k')
+                plt.text(-0.2, 0.95, f'{filter_amp}', fontsize=SMALL_SIZE, transform=ax.transAxes)
+
+            # Add to {area} label
+            if j==-1:
+                plt.text(-0.8, 0.5, f'To {name_list[i]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+            # Add from {area} or "inhomo" label
+            if i==0:
+                if j==-1:
+                    plt.text(-0.15, 1.2, f'Inhomo baseline', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+                else:
+                    plt.text(0.2, 1.2, f'From {name_list[j]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+            # Mannually add from V1 label
+            if i==0 and j==-1:
+                ax = plt.subplot(6, 7, 1, frameon=True)
+                plt.text(1.4, 1.2, f'From V1', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+                ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+
             # plt.grid()
             
             if inference and j!=-1:
@@ -2189,16 +2201,6 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 ins.set_xticks([])
                 ins.set_yticks([])
                 ins.set_ylabel('')
-            
-            if i==0 and j==2:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=MEDIUM_SIZE)
-            if i==1 and j==0:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=MEDIUM_SIZE)
-            if i==0 and j==-1:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.6*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
 
             if inference:
                 if pvalue_toplot[filter_index]<=0.1 and j!=-1:
@@ -2222,14 +2224,13 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                         plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output=None, 
-                               statistics_null_output=None, ROI_output=None, inference=True, output=False):
+                               statistics_null_output=None, ROI_output=None, filter_amp = 1.3, inference=True, output=False):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
     fontsize = 15
     filter_length = V1.nt
-    filter_amp = 1.3
-    inhomo_amp = [0.25, 0.1, 0.25, 0.25, 0.25, 0.15]
+    inhomo_amp = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
     trial_length = V1.nt
 
     if inference:
@@ -2282,8 +2283,8 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
                 plt.xticks([0, trial_length/2, trial_length])
                 plt.xlim([0, trial_length])
-                plt.ylim([0, inhomo_amp[i]])
-                plt.yticks([0, inhomo_amp[i]])
+                # plt.ylim([0, inhomo_amp[i]])
+                # plt.yticks([0, inhomo_amp[i]])
                 
             else:
                 plt.plot(x, y,label='stationary', color='b')
@@ -2293,33 +2294,36 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
                 plt.yticks(color='w')
                 plt.xticks([0, filter_length/2, filter_length])
                 plt.xlim([0, filter_length])
-                if i==0:
-                    plt.text(0.2*filter_length, 1.4*filter_amp, f'From {name_list[j]}', fontsize=MEDIUM_SIZE)
-                    
-            if j==0:
-                plt.yticks(color='k')
-                plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
-                plt.text(-2.1*filter_length, 0, f'To {name_list[i]}', fontsize=MEDIUM_SIZE)
-            if (j==1 and i==0):
-                plt.yticks(color='k')
-                plt.text(-75, 0.95*filter_amp, f'{filter_amp}', fontsize=SMALL_SIZE)
+
+            # Add xaxis to know where is above zero and where is below zero. 
             if j != -1:
                 plt.axhline(0, ls='-', color='grey', lw=SMALL_LW, alpha=0.5)
-            if i != 5:
-                plt.xticks(color='w')
+            # Only display "time (ms)" at the bottom row. 
             if i == 5:
-                plt.xlabel('time (ms)')
-            # plt.grid()
-            
-            if i==0 and j==2:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-4.5*filter_length, 0, f'To V1', fontsize=MEDIUM_SIZE)
-            if i==1 and j==0:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(0.2*filter_length, 3.8*filter_amp, f'From V1', fontsize=MEDIUM_SIZE)
+                plt.xlabel('time (ms)', fontsize=SMALL_SIZE)
+            else:
+                plt.xticks(color='w')
+            # Show amplitute for the most left panels of coupling filters. 
+            if j==0 or (j==1 and i==0):
+                plt.yticks(color='k')
+                plt.text(-0.2, 0.95, f'{filter_amp}', fontsize=SMALL_SIZE, transform=ax.transAxes)
+
+            # Add to {area} label
+            if j==-1:
+                plt.text(-0.8, 0.5, f'To {name_list[i]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+            # Add from {area} or "inhomo" label
+            if i==0:
+                if j==-1:
+                    plt.text(-0.15, 1.2, f'Inhomo baseline', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+                else:
+                    plt.text(0.2, 1.2, f'From {name_list[j]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+            # Mannually add from V1 label
             if i==0 and j==-1:
-                plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-                plt.text(-0.2*filter_length, 0.28, f'Inhomo baseline', fontsize=MEDIUM_SIZE)
+                ax = plt.subplot(6, 7, 1, frameon=True)
+                plt.text(1.4, 1.2, f'From V1', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
+                ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
+
+            # plt.grid()
             
             if inference:
                 if pvalue_output[filter_index]<=0.05 and j!=-1:
