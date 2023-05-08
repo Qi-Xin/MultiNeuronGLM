@@ -90,6 +90,7 @@ class PP_GLM():
         self.raw_input_list = []
         self.kwargs_list = []
         self.target = None
+        self.output = None
         self.no_penalty = []
         self.a = None
         self.intecept = None
@@ -465,7 +466,7 @@ class PP_GLM():
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0):
         self.use_warping = False
-        if self.target is None:
+        if self.target is None or self.output is None or self.response is None:
             self.target = target
             if type(target) == str:
                 # print(f"Assuming output is spike trains from {target}")
@@ -701,7 +702,25 @@ class PP_GLM():
                                             self.test_model.response, self.test_model.nt, max_spike=self.max_spike, warp_interval=self.warp_interval, 
                                             a=self.a, intecept=self.intecept)
             return nll
-        
+    
+    def get_initial_peaks(self):
+        if self.dataset is not None:
+            inhomo_model = PP_GLM(dataset=self.dataset, 
+                                    select_trials=self.select_trials, 
+                                    membership=self.membership, 
+                                    condition_ids=self.condition_ids)
+        else:
+            inhomo_model = PP_GLM(ntrial=self.ntrial, nt=self.nt, select_trials=self.select_trials)
+        for i_effect, effect_type in enumerate(self.effect_type_list):
+            if effect_type == "inhomogeneous_baseline":
+                raw_input = self.raw_input_list[i_effect]
+                kwargs = self.kwargs_list[i_effect]
+                inhomo_model.add_effect(effect_type, raw_input=raw_input, **kwargs)
+                break
+        inhomo_model.fit_time_warping_baseline(target=self.target, max_iter=3, warp_interval=self.warp_interval, 
+                                                method='mine', penalty=1e-2, verbose=False, use_all=self.use_all)
+        self.inhomo_model = inhomo_model
+        return inhomo_model.shifts
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
@@ -710,6 +729,8 @@ class PP_GLM():
         
         self.use_warping = True
         self.warp_interval = warp_interval
+        self.target = target
+        self.use_all = use_all
         
         ALPHA = 0.5   # to smooth the optimization process
         BETA = 0.0   # to smooth the optimization process
@@ -719,13 +740,27 @@ class PP_GLM():
         i_effect = [i_effect for i_effect,effect_type in enumerate(self.effect_type_list) 
             if effect_type=='inhomogeneous_baseline'][0]
         
-        # Initialization
-        if initial_shifts is None:
-            self.shifts = np.zeros((self.ntrial, 2*len(warp_interval)))
-        else:
-            self.shifts = initial_shifts
         nll_old = np.inf
         X_baseline_original = self.effect_list[i_effect]
+
+        # Initialization
+        if initial_shifts is None:
+            # self.shifts = np.zeros((self.ntrial, 2*len(warp_interval)))
+            pass
+        else:
+            if initial_shifts=="peaks":
+                initial_shifts = self.get_initial_peaks()
+            elif type(initial_shifts) == np.ndarray:
+                assert initial_shifts.shape == (self.ntrial, 2*len(warp_interval)), "initial_shifts shape wrong!"
+                
+            else:
+                raise ValueError("nitial_shifts can only be None (fit first); \"peaks\" (fit inhomogeneous and get firing rate peaks);"/
+                    +"np.array (from existing initial_shifts)")
+            self.initial_shifts = initial_shifts
+            self.shifts = initial_shifts
+            X_baseline_warp = apply_warping_to_predictors(self.time_line, X_baseline_original, self.shifts, self.nt, 
+                                                        warp_interval=warp_interval)
+            self.effect_list[i_effect] = X_baseline_warp
         
         if fix_shifts is None:
             for iter in range(max_iter):
@@ -778,8 +813,8 @@ class PP_GLM():
                 nll_old = nll
         else:
             self.shifts = fix_shifts
-            for i_interval in range(len(warp_interval)):
-                self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
+            # for i_interval in range(len(warp_interval)):
+            #     self.shifts[:,2*i_interval+1] = (self.shifts[:,2*i_interval+1] - self.shifts[:,2*i_interval])*THETA + self.shifts[:,2*i_interval]
             X_baseline_warp = apply_warping_to_predictors(self.time_line, X_baseline_original, self.shifts, self.nt, 
                                                         warp_interval=warp_interval)
             self.effect_list[i_effect] = X_baseline_warp
@@ -792,6 +827,7 @@ class PP_GLM():
         self.basis_name[i_effect] = 'time_warping_inhomogeneous_baseline'
         # self.inhomo_template = inhomo_template
         # self.nll = nll
+        self.use_warping = True
         
 def fit_individual(model, target_probe, coupling_filter_params, verbose=True, penalty=1e-10, method='mine', max_spike=None):
     # print("Starting now!")
