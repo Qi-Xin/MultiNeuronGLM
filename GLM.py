@@ -2126,7 +2126,8 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     
 def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
                                statistics_null_filter=None, ROI_filter=None, inference=True, 
-                               plot_baseline=True, plot_self=False, filter_amp=0.15, output=False):
+                               plot_baseline=True, plot_self=False, filter_amp=0.15, output=False, 
+                               colors=['b', 'r'], labels=['Stationary', 'Running']):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
@@ -2162,8 +2163,8 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
-            if j == -1 and (not plot_baseline):
-                continue
+            # if j == -1 and (not plot_baseline):
+            #     continue
             i_plot = transfer_ij[i]
             j_plot = transfer_ij[j]
             if i==j and (not plot_self):
@@ -2171,27 +2172,34 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
             ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
             filter_index = i_plot,j_plot
     #         print(filter_index)
-            y, ci = running_filter[filter_index]
-            x = np.arange(y.shape[0])
-
-            if j == -1:
-                plt.plot(x, np.exp(y),label='running', color='r')
-                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='r', alpha=.3)
-            else:
-                # Correct for different number of neurons in different areas
-                plt.plot(x, y,label='running', color='r')
-                plt.fill_between(x, (y-2*ci), (y+2*ci), color='r', alpha=.3)
-                
             y, ci = stationary_filter[filter_index]
             x = np.arange(y.shape[0])
+            color = colors[0]
+            label = labels[0]
+
             if j == -1:
-                plt.plot(x, np.exp(y),label='stationary', color='b')
-                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
-                plt.xticks([0, trial_length/2, trial_length])
-                plt.xlim([0, trial_length])
+                if plot_baseline:
+                    plt.plot(x, np.exp(y),label=label, color=color)
+                    plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color=color, alpha=.3)
             else:
-                plt.plot(x, y,label='stationary', color='b')
-                plt.fill_between(x, (y-2*ci), (y+2*ci), color='b', alpha=.3)
+                # Correct for different number of neurons in different areas
+                plt.plot(x, y,label=label, color=color)
+                plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
+                
+            y, ci = running_filter[filter_index]
+            x = np.arange(y.shape[0])
+            color = colors[1]
+            label = labels[1]
+
+            if j == -1:
+                if plot_baseline:
+                    plt.plot(x, np.exp(y),label=label, color=color)
+                    plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color=color, alpha=.3)
+                    plt.xticks([0, trial_length/2, trial_length])
+                    plt.xlim([0, trial_length])
+            else:
+                plt.plot(x, y,label=label, color=color)
+                plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
                 # plt.yticks([-filter_amp, 0, filter_amp])
                 plt.yticks([0])
                 # if i!=j and i_plot!=0:
@@ -2260,7 +2268,8 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                         plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output=None, 
-                               statistics_null_output=None, ROI_output=None, filter_amp = 1.3, inference=True, output=False):
+                               statistics_null_output=None, ROI_output=None, filter_amp = 1.3, 
+                               inference=True, output=False, colors=['b', 'r']):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
