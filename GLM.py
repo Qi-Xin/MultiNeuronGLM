@@ -2479,7 +2479,7 @@ def getI_real_data(features, dt, nt, npadding, log_fr):
     features["I"] = stimulus
     features["I_pre"] = stimulus_pre
 
-def EIF_simulator(std1=10, corr1=0.5, std2=25, corr2=0.9, ntrial=100, conn=0.0, return_current=False):
+def EIF_simulator(std1, corr1, std2, corr2, ntrial, conn, return_current=False):
 
     with open('EIF_params.pickle', 'rb') as handle:
         EIF_params = pickle.load(handle)
@@ -2610,15 +2610,15 @@ def EIF_simulator(std1=10, corr1=0.5, std2=25, corr2=0.9, ntrial=100, conn=0.0, 
         return spikes_rcd[padding:,:,:], I_ext[npadding:,:,:]
 
     
-def get_p():
+def get_p(std1, corr1, std2, corr2, ntrial, conn):
     from sklearn.model_selection import KFold
     from scipy.stats import wilcoxon
-    std1 = 0
-    corr1 = 0.0
-    std2 = 0
-    corr2 = 0.0
-    ntrial = 100
-    conn = 0.01
+    # std1 = 0
+    # corr1 = 0.0
+    # std2 = 0
+    # corr2 = 0.0
+    # ntrial = 100
+    # conn = 0.008
 
     ntimes = 1
     nfold = 10
@@ -2643,7 +2643,7 @@ def get_p():
     nll_diff = 0
     nll_diff_pop = 0
     
-    spikes_rcd = EIF_simulator(std1=std1, corr1=corr1, std2=std2, corr2=corr2, ntrial=ntrial, conn=conn)
+    spikes_rcd = EIF_simulator(std1, corr1, std2, corr2, ntrial, conn)
     nt, nneuron, ntrial = spikes_rcd.shape
     
     spike_trains_source = []
@@ -2733,20 +2733,20 @@ def get_p():
     return wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
         wilcoxon(test_nll_full_pop, test_nll_nest_pop, alternative='less')
 
-def get_ps():
+def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008):
     import multiprocessing
     import os
 
     PROCESSES = 10
-    ntimes = 10
+    # ntimes = 10
     result = []
     result_pop = []
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-        ress = [pool.apply_async(get_p) 
+        ress = [pool.apply_async(get_p, (std1, corr1, std2, corr2, ntrial, conn)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
-        for res in ress:
+        for res in tqdm(ress):
             result_temp, result_pop_temp = res.get()
             result.append(result_temp)
             result_pop.append(result_pop_temp)
