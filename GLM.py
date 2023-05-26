@@ -1917,7 +1917,7 @@ def get_excursion_test(func, ROI_list, std=None):
     else:
         func /= std
     for i, ROI in enumerate(ROI_list):
-        stats_list.append( np.sum( func ) )
+        stats_list.append( np.sum( func[ROI] ) )
     return [np.max(stats_list)]
 
 def get_ROI(func, std=None):
