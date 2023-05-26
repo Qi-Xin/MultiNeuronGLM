@@ -147,7 +147,7 @@ if __name__ == "__main__":
     from GLM import get_statistics_null_mp
     import time
     import socket
-
+    
     i = 0
     while True:
         

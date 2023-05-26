@@ -1894,24 +1894,39 @@ def poisson_regression_pytorch(
     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
 #%% Excursion test
-def get_excursion_statistic(function1, function2, time_range=None):
+def get_excursion_statistic(function1, function2, time_range=None, return_filter=False, std1=None, std2=None):
+    assert ((std1 is not None) and (std2 is not None)) or ((std1 is None) and (std2 is None)), "std1 and std2 all being None means not calibrating."
     if time_range is None:
         time_range = [0, len(function1)]
-    ROI = get_ROI(function1[time_range[0]:time_range[1]], function2[time_range[0]:time_range[1]])
-    test_statistic = get_excursion_test(function1[time_range[0]:time_range[1]], function2[time_range[0]:time_range[1]], ROI)
-    return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic
+    if ((std1 is None) and (std2 is None)):
+        std = None
+    else:
+        std = np.sqrt(std1**2 + std2**2)
+    func = np.abs(function1[time_range[0]:time_range[1]] - function2[time_range[0]:time_range[1]])
+    ROI = get_ROI(func, std=std)
+    test_statistic = get_excursion_test(func, ROI, std=std)
+    if return_filter is False:
+        return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic
+    else:
+        return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic, [function1, function2, std1, std2]
 
-def get_excursion_test(function1, function2, ROI_list):
+def get_excursion_test(func, ROI_list, std=None):
     stats_list = []
+    if std is None:
+        pass
+    else:
+        func /= std
     for i, ROI in enumerate(ROI_list):
-        diff = function1 - function2
-        stats_list.append( np.sum( np.abs(diff[ROI]) ) )
+        stats_list.append( np.sum( func ) )
     return [np.max(stats_list)]
 
-def get_ROI(function1, function2):
-    diff = np.abs(function1 - function2)
-    threshold = diff.max()/2
-    idx = np.where(diff >= threshold)[0]
+def get_ROI(func, std=None):
+    if std is None:
+        threshold = func.max()/2
+    else:
+        func /= std
+        threshold = 1.96
+    idx = np.where(func >= threshold)[0]
     return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
 
 def merge_dict(d1, d2):
