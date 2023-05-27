@@ -1987,8 +1987,10 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
 
     ROI_filter = {}
     statistics_filter = {}
+    record_filter = {}
     ROI_output = {}
     statistics_output = {}
+    record_output = {}
 
     for i, target_probe in enumerate(probe_list):
         select_trials = fake_running_trial_index
@@ -2037,9 +2039,11 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
         
         # for effect filter
         filter_index = i,-1
-        function1 = np.exp( running_filter[filter_index][0] )
-        function2 = np.exp( stationary_filter[filter_index][0] )
-        ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2)
+        function1 = running_filter[filter_index][0]
+        function2 = stationary_filter[filter_index][0]
+        std1 = running_filter[filter_index][1]
+        std2 = stationary_filter[filter_index][0]
+        ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_filter[filter_index][0]
@@ -2050,6 +2054,8 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
         filter_index = i,-1
         function1 = np.exp( running_output[filter_index][0] )
         function2 = np.exp( stationary_output[filter_index][0] )
+        std1 = function1*np.exp(running_filter[filter_index][1]**2/2)*np.sqrt(np.exp(running_filter[filter_index][1]**2)-1)
+        std2 = function1*np.exp(stationary_filter[filter_index][1]**2/2)*np.sqrt(np.exp(stationary_filter[filter_index][1]**2)-1)
         ROI_output[filter_index], statistics_output[filter_index] = get_excursion_statistic(function1, function2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
