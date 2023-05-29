@@ -2117,16 +2117,16 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time)
                             statistics_filter_null_new, statistics_output_null_new, record_filter_null_new, record_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
-                            record_filter_null = merge_dict(statistics_filter_null, record_filter_null_new)
-                            record_output_null = merge_dict(statistics_output_null, record_output_null_new)
+                            record_filter_null = merge_dict(record_filter_null, record_filter_null_new)
+                            record_output_null = merge_dict(record_output_null, record_output_null_new)
                             pbar.update(1)
                     else:
                         for result in results:
                             statistics_filter_null_new, statistics_output_null_new, record_filter_null_new, record_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
-                            record_filter_null = merge_dict(statistics_filter_null, record_filter_null_new)
-                            record_output_null = merge_dict(statistics_output_null, record_output_null_new)
+                            record_filter_null = merge_dict(record_filter_null, record_filter_null_new)
+                            record_output_null = merge_dict(record_output_null, record_output_null_new)
                             pbar.update(1)
                             
     else:
