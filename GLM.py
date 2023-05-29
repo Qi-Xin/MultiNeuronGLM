@@ -1902,6 +1902,7 @@ def get_excursion_statistic(function1, function2, time_range=None, return_filter
         std = None
     else:
         std = np.sqrt(std1**2 + std2**2)
+        std[std<=std.mean()] = std.mean()
     func = np.abs(function1[time_range[0]:time_range[1]] - function2[time_range[0]:time_range[1]])
     ROI = get_ROI(func, std=std)
     test_statistic = get_excursion_test(func, ROI, std=std)
@@ -2039,31 +2040,39 @@ def get_statistics_null_excursion(V1, membership, condition_ids, fix_peak_time):
         
         # for effect filter
         filter_index = i,-1
-        function1 = running_filter[filter_index][0]
-        function2 = stationary_filter[filter_index][0]
-        std1 = running_filter[filter_index][1]
-        std2 = stationary_filter[filter_index][0]
-        ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
+        function1 = np.exp( running_filter[filter_index][0] )
+        function2 = np.exp( stationary_filter[filter_index][0] )
+        std1 = function1*np.exp(running_filter[filter_index][1]**2/2)*np.sqrt(np.exp(running_filter[filter_index][1]**2)-1)
+        std2 = function1*np.exp(stationary_filter[filter_index][1]**2/2)*np.sqrt(np.exp(stationary_filter[filter_index][1]**2)-1)
+        ROI_filter[filter_index], statistics_filter[filter_index], record_filter[filter_index] \
+            = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_filter[filter_index][0]
             function2 = stationary_filter[filter_index][0]
-            ROI_filter[filter_index], statistics_filter[filter_index] = get_excursion_statistic(function1, function2)
+            std1 = running_filter[filter_index][1]
+            std2 = stationary_filter[filter_index][1]
+            ROI_filter[filter_index], statistics_filter[filter_index], record_filter[filter_index] \
+                = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
         
         # for effect output
         filter_index = i,-1
         function1 = np.exp( running_output[filter_index][0] )
         function2 = np.exp( stationary_output[filter_index][0] )
-        std1 = function1*np.exp(running_filter[filter_index][1]**2/2)*np.sqrt(np.exp(running_filter[filter_index][1]**2)-1)
-        std2 = function1*np.exp(stationary_filter[filter_index][1]**2/2)*np.sqrt(np.exp(stationary_filter[filter_index][1]**2)-1)
-        ROI_output[filter_index], statistics_output[filter_index] = get_excursion_statistic(function1, function2)
+        std1 = function1*np.exp(running_output[filter_index][1]**2/2)*np.sqrt(np.exp(running_output[filter_index][1]**2)-1)
+        std2 = function1*np.exp(stationary_output[filter_index][1]**2/2)*np.sqrt(np.exp(stationary_output[filter_index][1]**2)-1)
+        ROI_output[filter_index], statistics_output[filter_index], record_output[filter_index] \
+            = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
         for j, input_probe in enumerate(probe_list):
             filter_index = i,j
             function1 = running_output[filter_index][0]
             function2 = stationary_output[filter_index][0]
-            ROI_output[filter_index], statistics_output[filter_index] = get_excursion_statistic(function1, function2)
+            std1 = running_output[filter_index][1]
+            std2 = stationary_output[filter_index][1]
+            ROI_output[filter_index], statistics_output[filter_index], record_output[filter_index] \
+                = get_excursion_statistic(function1, function2, return_filter=True, std1=std1, std2=std2)
         
-    return statistics_filter, statistics_output
+    return statistics_filter, statistics_output, record_filter, record_output
 # Multiprocess version of null distribution
 
 def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time):
@@ -2102,18 +2111,22 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time)
                     pool.close()
                     if ibatch == 0: 
                         # The first batch the first return result will be the very first "statistics_null"
-                        statistics_filter_null, statistics_output_null = results[0].get()
+                        statistics_filter_null, statistics_output_null, record_filter_null, record_output_null = results[0].get()
                         pbar.update(1)
                         for result in results[1:]:
-                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new, record_filter_null_new, record_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
+                            record_filter_null = merge_dict(statistics_filter_null, record_filter_null_new)
+                            record_output_null = merge_dict(statistics_output_null, record_output_null_new)
                             pbar.update(1)
                     else:
                         for result in results:
-                            statistics_filter_null_new, statistics_output_null_new = result.get()
+                            statistics_filter_null_new, statistics_output_null_new, record_filter_null_new, record_output_null_new = result.get()
                             statistics_filter_null = merge_dict(statistics_filter_null, statistics_filter_null_new)
                             statistics_output_null = merge_dict(statistics_output_null, statistics_output_null_new)
+                            record_filter_null = merge_dict(statistics_filter_null, record_filter_null_new)
+                            record_output_null = merge_dict(statistics_output_null, record_output_null_new)
                             pbar.update(1)
                             
     else:
@@ -2128,7 +2141,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time)
             for result in tqdm(results[1:]):
                 statistics_null_new = result.get()
                 statistics_null = merge_dict(statistics_null, statistics_null_new)
-    return statistics_filter_null, statistics_output_null
+    return statistics_filter_null, statistics_output_null, record_filter_null, record_output_null
 
 
 
