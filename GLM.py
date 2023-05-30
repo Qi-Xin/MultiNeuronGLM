@@ -1916,18 +1916,18 @@ def get_excursion_test(func, ROI_list, std=None):
     if std is None:
         pass
     else:
-        func /= std
+        func_calibrate = func/std
     for i, ROI in enumerate(ROI_list):
-        stats_list.append( np.sum( func[ROI] ) )
+        stats_list.append( np.sum( func_calibrate[ROI]-2.58) )
     return [np.max(stats_list)]
 
 def get_ROI(func, std=None):
     if std is None:
         threshold = func.max()/2
     else:
-        func /= std
-        threshold = 1.96
-    idx = np.where(func >= threshold)[0]
+        func_calibrate = func/std
+        threshold = 2.58
+    idx = np.where(func_calibrate >= threshold)[0]
     return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
 
 def merge_dict(d1, d2):
@@ -2162,7 +2162,7 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
 def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
                                statistics_null_filter=None, ROI_filter=None, inference=True, 
                                plot_baseline=True, plot_self=False, filter_amp=0.15, output=False, 
-                               colors=['b', 'r'], labels=['Stationary', 'Running']):
+                               colors=['b', 'r'], labels=['Stationary', 'Running'], p_th=0.05):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
@@ -2282,7 +2282,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 ins.set_ylabel('')
 
             if inference:
-                if pvalue_toplot[filter_index]<=0.1 and j!=-1:
+                if pvalue_toplot[filter_index]<=p_th and j!=-1:
                     # change yellow to ROI
                     stats_list = []
                     for ii, ROI in enumerate(ROI_filter[filter_index]):
@@ -2304,7 +2304,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
 
 def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output=None, 
                                statistics_null_output=None, ROI_output=None, filter_amp = 1.3, 
-                               inference=True, output=False, colors=['b', 'r']):
+                               inference=True, output=False, colors=['b', 'r'], p_th=0.05):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
@@ -2406,7 +2406,7 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
             # plt.grid()
             
             if inference:
-                if pvalue_output[filter_index]<=0.05 and j!=-1:
+                if pvalue_output[filter_index]<=p_th and j!=-1:
                     # change yellow to ROI
                     stats_list = []
                     for ii, ROI in enumerate(ROI_output[filter_index]):
