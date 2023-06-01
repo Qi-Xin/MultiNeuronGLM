@@ -59,7 +59,7 @@ class PP_GLM():
                 self.select_trials = np.full(self.ntrial, True)
             else:
                 self.select_trials = select_trials
-            if type(select_trials[0]) == np.bool_:
+            if type(self.select_trials[0]) == np.bool_:
                 self.ntrial = self.select_trials.sum()
             else:
                 self.ntrial = self.select_trials.shape[0]
@@ -1918,7 +1918,7 @@ def get_excursion_test(func, ROI_list, std=None):
     else:
         func_calibrate = func/std
     for i, ROI in enumerate(ROI_list):
-        stats_list.append( np.sum( func_calibrate[ROI]-2.58) )
+        stats_list.append( np.max( func_calibrate[ROI]-0) )
     return [np.max(stats_list)]
 
 def get_ROI(func, std=None):
@@ -1926,7 +1926,7 @@ def get_ROI(func, std=None):
         threshold = func.max()/2
     else:
         func_calibrate = func/std
-        threshold = 2.58
+        threshold = 0
     idx = np.where(func_calibrate >= threshold)[0]
     return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
 
