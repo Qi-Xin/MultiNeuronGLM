@@ -1900,7 +1900,7 @@ def get_excursion_statistic(function1, function2, time_range=None, return_filter
         time_range = [0, len(function1)]
     if ((std1 is None) and (std2 is None)):
         std = None
-    else: 
+    else:
         std = np.sqrt(std1**2 + std2**2)
         std[std<=std.mean()] = std.mean()
     func = np.abs(function1[time_range[0]:time_range[1]] - function2[time_range[0]:time_range[1]])
