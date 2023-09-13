@@ -2163,12 +2163,11 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     
 def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
                                statistics_null_filter=None, ROI_filter=None, inference=True, 
-                               plot_baseline=True, plot_self=False, filter_amp=0.15, output=False, 
+                               plot_baseline=True, plot_self=False, filter_amp=0.15, dpi=300, 
                                colors=['b', 'r'], labels=['Stationary', 'Running'], p_th=0.05):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
-    fontsize = 15
     filter_length = stationary_filter[1,2][0].shape[0]
     trial_length = V1.nt
 
@@ -2182,21 +2181,21 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
 
     sns.reset_orig()
     # sns.set_theme()
-    if output:
-        plt.subplots(figsize=(6.9,4.6))
-        SMALL_SIZE = 5
-        MEDIUM_SIZE = 7
-        BIGGER_SIZE = 8
-        BIGGER_LW = 1
-        SMALL_LW = 0.75
-        utils.use_pdf_plot()
-    else:
-        plt.subplots(figsize=(15,10))
-        BIGGER_SIZE = 15
-        MEDIUM_SIZE = 15
-        SMALL_SIZE = 10
-        BIGGER_LW = 2
-        SMALL_LW = 1.5
+    
+    # plt.subplots(figsize=(6.9,4.6), dpi=dpi)
+    # BIGGER_SIZE = 8
+    # SMALL_SIZE = 7
+    # MEDIUM_SIZE = 7
+    # BIGGER_LW = 1
+    # SMALL_LW = 0.75
+    # utils.use_pdf_plot()
+        
+    plt.subplots(figsize=(15,10), dpi=dpi)
+    BIGGER_SIZE = 15
+    MEDIUM_SIZE = 15
+    SMALL_SIZE = 10
+    BIGGER_LW = 2
+    SMALL_LW = 1.5
     
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
