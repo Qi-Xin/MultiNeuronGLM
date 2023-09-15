@@ -153,32 +153,20 @@ if __name__ == "__main__":
     i = 0
     while True:
         
-        statistics_null_filter_new, statistics_null_output_new, record_filter_null_new, record_output_null_new \
-            = get_statistics_null_mp(50, V1, membership, condition_ids, fix_peak_time=None)
+        record_filter_null_new, record_output_null_new = get_statistics_null_mp(50, V1, membership, condition_ids, fix_peak_time=None)
         if i==0:
             if use_before==True:
-                with open('statistics_null_filter_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
-                    statistics_null_filter = pickle.load(handle)
-                with open('statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
-                    statistics_null_output = pickle.load(handle)
                 with open('record_filter_null_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
                     record_filter_null = pickle.load(handle)
                 with open('record_output_null_'+socket.gethostname()[:7]+'.pickle', 'rb') as handle:
                     record_output_null = pickle.load(handle)
             else:
-                statistics_null_filter = statistics_null_filter_new
-                statistics_null_output = statistics_null_output_new
                 record_filter_null = record_filter_null_new
                 record_output_null = record_output_null_new
         else:
-            statistics_null_filter = GLM.merge_dict(statistics_null_filter, statistics_null_filter_new)
-            statistics_null_output = GLM.merge_dict(statistics_null_output, statistics_null_output_new)
             record_filter_null = GLM.merge_dict(record_filter_null, record_filter_null_new)
             record_output_null = GLM.merge_dict(record_output_null, record_output_null_new)
-        with open('Null3basisMax/statistics_null_filter_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
-            pickle.dump(statistics_null_filter, handle)
-        with open('Null3basisMax/statistics_null_output_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
-            pickle.dump(statistics_null_output, handle)
+
         with open('Null3basisMax/record_filter_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
             pickle.dump(record_filter_null, handle)
         with open('Null3basisMax/record_output_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
