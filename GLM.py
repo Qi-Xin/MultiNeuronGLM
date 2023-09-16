@@ -2135,7 +2135,7 @@ def get_statistics_null_mp(n_null, V1, membership, condition_ids, fix_peak_time)
                             pbar.update(1)
     else:
         raise ValueError("Only on Linux at the moment. ")
-    return statistics_filter_null, statistics_output_null, record_filter_null, record_output_null
+    return record_filter_null, record_output_null
 
 
 

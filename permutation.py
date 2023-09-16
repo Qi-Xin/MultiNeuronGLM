@@ -167,9 +167,9 @@ if __name__ == "__main__":
             record_filter_null = GLM.merge_dict(record_filter_null, record_filter_null_new)
             record_output_null = GLM.merge_dict(record_output_null, record_output_null_new)
 
-        with open('Null3basisMax/record_filter_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
+        with open('Null3basisFunctionOnly/record_filter_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
             pickle.dump(record_filter_null, handle)
-        with open('Null3basisMax/record_output_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
+        with open('Null3basisFunctionOnly/record_output_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
             pickle.dump(record_output_null, handle)
         print(f"Finishing {(i+1)*50} permutation. (Total: {len(statistics_null_filter[0,0])})")
         
