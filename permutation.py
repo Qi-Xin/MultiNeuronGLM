@@ -171,7 +171,7 @@ if __name__ == "__main__":
             pickle.dump(record_filter_null, handle)
         with open('Null3basisFunctionOnly/record_output_null_'+socket.gethostname()[:7]+'.pickle', 'wb') as handle:
             pickle.dump(record_output_null, handle)
-        print(f"Finishing {(i+1)*50} permutation. (Total: {len(statistics_null_filter[0,0])})")
+        print(f"Finishing {(i+1)*50} permutation. (Total: {len(record_filter_null[0,0])})")
         
         i += 1
         # if time.localtime().tm_hour >= 8:
