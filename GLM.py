@@ -1894,45 +1894,93 @@ def poisson_regression_pytorch(
     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
 
 #%% Excursion test
-def get_excursion_statistic(function1, function2, time_range=None, return_filter=False, std1=None, std2=None):
-    assert ((std1 is not None) and (std2 is not None)) or ((std1 is None) and (std2 is None)), "std1 and std2 all being None means not calibrating."
+def get_excursion_statistic_from_dict(record, method='default', time_range=None, calibrate_threshold=2.58):
+    statistics_dict = {}
+    for key, value in record.items():
+        statistics_dict[key] = get_excursion_statistic_multi_trial(value, method=method, time_range=time_range, calibrate_threshold=calibrate_threshold)
+    return statistics_dict
+
+def get_excursion_statistic_multi_trial(null_functions, method='default', time_range=None, calibrate_threshold=2.58):
+    statistics_list = []
+    for functions in null_functions:
+        statistics, ROI = get_excursion_statistic_single_trial(functions, method=method, time_range=time_range, calibrate_threshold=calibrate_threshold)
+        statistics_list.append(statistics)
+    return statistics_list
+
+def get_excursion_statistic_single_trial(functions, method='default', time_range=None, calibrate_threshold=2.58):
+    assert method in ['default', 'max', 'calibrate'], "Only support \'default\', \'max\', and \'calibrate\' "
+    func1, func2, std1, std2 = functions
     if time_range is None:
-        time_range = [0, len(function1)]
-    if ((std1 is None) and (std2 is None)):
+        time_range = [0, len(func1)]
+    func = np.abs(func1[time_range[0]:time_range[1]] - func2[time_range[0]:time_range[1]])
+    
+    # Define "diff" function and "threshold"
+    if method in ['default']:
         std = None
-    else:
+        threshold = func.max()/2
+    elif method in ['max', 'calibrate']:
         std = np.sqrt(std1**2 + std2**2)
         std[std<=std.mean()] = std.mean()
-    func = np.abs(function1[time_range[0]:time_range[1]] - function2[time_range[0]:time_range[1]])
-    ROI = get_ROI(func, std=std)
-    test_statistic = get_excursion_test(func, ROI, std=std)
-    if return_filter is False:
-        return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic
-    else:
-        return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic, [function1, function2, std1, std2]
-
-def get_excursion_test(func, ROI_list, std=None):
+        func /= std
+        threshold = calibrate_threshold if method=='calibrate' else 0
+        
+    # Get ROIs
+    idx = np.where(func >= threshold)[0]
+    ROI_list = np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
+    
+    # Get excursion test statistics
     stats_list = []
-    if std is None:
-        func_calibrate = func
-    else:
-        func_calibrate = func/std
     for i, ROI in enumerate(ROI_list):
-        stats_list.append( np.sum( func_calibrate[ROI]) )
-        # stats_list.append( np.sum( func_calibrate[ROI]-2.58) ) # Calibrate
-        # stats_list.append( np.max( func_calibrate[ROI]-0) ) # Max
-    return [np.max(stats_list)]
+        if method in ['default']:
+            stats_list.append( np.sum( func[ROI]) )
+        elif method in ['calibrate']:
+            stats_list.append( np.sum( func[ROI]-calibrate_threshold) )
+        elif method in ['max']:
+            stats_list.append( np.max( func[ROI]) )
 
-def get_ROI(func, std=None):
-    if std is None:
-        threshold = func.max()/2
-        func_calibrate = func
-    else:
-        func_calibrate = func/std
-        # threshold = 2.58 # Calibrate
-        # threshold = 0 # Max
-    idx = np.where(func_calibrate >= threshold)[0]
-    return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
+    max_index = stats_list.index(max(stats_list))
+    ROI_list.insert(0, ROI_list.pop(max_index))
+    return np.max(stats_list), ROI_list
+
+# def get_excursion_statistic(function1, function2, time_range=None, return_filter=False, std1=None, std2=None):
+#     assert ((std1 is not None) and (std2 is not None)) or ((std1 is None) and (std2 is None)), "std1 and std2 all being None means not calibrating."
+#     if time_range is None:
+#         time_range = [0, len(function1)]
+#     if ((std1 is None) and (std2 is None)):
+#         std = None
+#     else:
+#         std = np.sqrt(std1**2 + std2**2)
+#         std[std<=std.mean()] = std.mean()
+#     func = np.abs(function1[time_range[0]:time_range[1]] - function2[time_range[0]:time_range[1]])
+#     ROI = get_ROI(func, std=std)
+#     test_statistic = get_excursion_test(func, ROI, std=std)
+#     if return_filter is False:
+#         return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic
+#     else:
+#         return [single_ROI+time_range[0] for single_ROI in ROI], test_statistic, [function1, function2, std1, std2]
+
+# def get_excursion_test(func, ROI_list, std=None):
+#     stats_list = []
+#     if std is None:
+#         func_calibrate = func
+#     else:
+#         func_calibrate = func/std
+#     for i, ROI in enumerate(ROI_list):
+#         stats_list.append( np.sum( func_calibrate[ROI]) )
+#         # stats_list.append( np.sum( func_calibrate[ROI]-2.58) ) # Calibrate
+#         # stats_list.append( np.max( func_calibrate[ROI]-0) ) # Max
+#     return [np.max(stats_list)]
+
+# def get_ROI(func, std=None):
+#     if std is None:
+#         threshold = func.max()/2
+#         func_calibrate = func
+#     else:
+#         func_calibrate = func/std
+#         # threshold = 2.58 # Calibrate
+#         # threshold = 0 # Max
+#     idx = np.where(func_calibrate >= threshold)[0]
+#     return np.split(idx, np.where(np.diff(idx) != 1)[0]+1)
 
 def merge_dict(d1, d2):
     # d1 is the mother, d2 is the one to add to d1
@@ -2156,8 +2204,9 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
         for i in range(len(probe_list)):
             for j in range(-1, len(probe_list)):
                 filter_index = i,j
-                pvalue_toplot[filter_index] = 1-np.sum( statistics_filter[filter_index][0]>statistics_null_filter[filter_index]) \
-                    /len(statistics_null_filter[filter_index])
+                pvalue_toplot[filter_index] = 1- \
+                    np.sum( statistics_filter[filter_index]>statistics_null_filter[filter_index]) \
+                        /len(statistics_null_filter[filter_index])
 
     sns.reset_orig()
     # sns.set_theme()
@@ -2265,13 +2314,14 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
             if inference:
                 if pvalue_toplot[filter_index]<=p_th and j!=-1:
                     # change yellow to ROI
-                    stats_list = []
-                    for ii, ROI in enumerate(ROI_filter[filter_index]):
-                        function1 = stationary_filter[filter_index][0]
-                        function2 = running_filter[filter_index][0]
-                        diff = np.abs(function1 - function2)
-                        stats_list.append( np.sum(diff[ROI]) ) 
-                    temp = ROI_filter[filter_index][np.argmax(stats_list)]
+                    # stats_list = []
+                    # for ii, ROI in enumerate(ROI_filter[filter_index]):
+                    #     function1 = stationary_filter[filter_index][0]
+                    #     function2 = running_filter[filter_index][0]
+                    #     diff = np.abs(function1 - function2)
+                    #     stats_list.append( np.sum(diff[ROI]) ) 
+                    # temp = ROI_filter[filter_index][np.argmax(stats_list)]
+                    temp = ROI_filter[filter_index][0]
                     x = np.array([temp.min(), temp.max()])
                     plt.fill_between(x, np.array([-filter_amp,-filter_amp]), np.array([filter_amp,filter_amp]), \
                                     color='yellow', alpha=.5)
