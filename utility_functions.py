@@ -156,29 +156,18 @@ from matplotlib import rcParams, rcParamsDefault
 def use_pdf_plot():
     sns.reset_orig()
     SMALL_SIZE = 5
-    MEDIUM_SIZE = 7
-    BIGGER_SIZE = 8
+    MEDIUM_SIZE = 6
+    BIG_SIZE = 7
+    # rcParams['font.size'] = SMALL_SIZE
     rcParams['lines.linewidth'] = 1
     rcParams['axes.labelsize'] = MEDIUM_SIZE
-    rcParams['axes.titlesize'] = BIGGER_SIZE
-    rcParams['font.size'] = MEDIUM_SIZE
-    rcParams['xtick.major.size'] = SMALL_SIZE
-    rcParams['ytick.major.size'] = SMALL_SIZE
-    rcParams['figure.titlesize'] = MEDIUM_SIZE
-    rcParams['legend.fontsize'] = SMALL_SIZE
-    
-def use_self_plot():
-    SMALL_SIZE = 5
-    MEDIUM_SIZE = 7
-    BIGGER_SIZE = 25
-    rcParams['lines.linewidth'] = 1
-    rcParams['axes.labelsize'] = MEDIUM_SIZE
-    rcParams['axes.titlesize'] = BIGGER_SIZE
-    rcParams['font.size'] = MEDIUM_SIZE
-    rcParams['xtick.major.size'] = SMALL_SIZE
-    rcParams['ytick.major.size'] = SMALL_SIZE
-    rcParams['figure.titlesize'] = MEDIUM_SIZE
-    rcParams['legend.fontsize'] = SMALL_SIZE
+    rcParams['axes.titlesize'] = BIG_SIZE
+    rcParams['figure.titlesize'] = BIG_SIZE
+    rcParams['legend.fontsize'] = MEDIUM_SIZE
+    rcParams['xtick.labelsize'] = MEDIUM_SIZE
+    rcParams['ytick.labelsize'] = MEDIUM_SIZE
+    rcParams['xtick.major.size'] = 2  # length of x-axis major ticks
+    rcParams['ytick.major.size'] = 2  # length of y-axis major ticks
     
 def use_default_plot():
     sns.reset_orig()
