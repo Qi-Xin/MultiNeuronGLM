@@ -168,7 +168,9 @@ def use_pdf_plot():
     rcParams['ytick.labelsize'] = MEDIUM_SIZE
     rcParams['xtick.major.size'] = 2  # length of x-axis major ticks
     rcParams['ytick.major.size'] = 2  # length of y-axis major ticks
-    
+    rcParams['xtick.major.pad'] = 1  # Adjust as needed
+    rcParams['ytick.major.pad'] = 1  # Adjust as needed
+
 def use_default_plot():
     sns.reset_orig()
     rcParams.update(rcParamsDefault)
