@@ -1896,18 +1896,21 @@ def poisson_regression_pytorch(
 #%% Excursion test
 def get_excursion_statistic_from_dict(record, method='default', time_range=None, calibrate_threshold=2.58):
     statistics_dict = {}
-    for key, value in record.items():
-        statistics_dict[key] = get_excursion_statistic_multi_trial(value, method=method, time_range=time_range, calibrate_threshold=calibrate_threshold)
+    for key, value in tqdm(record.items(), desc='Processing records'):
+        if key[0]>=0 and key[1]>=0:
+            statistics_dict[key] = get_excursion_statistic_multi_trial(value, method=method, time_range=time_range, calibrate_threshold=calibrate_threshold)
     return statistics_dict
 
 def get_excursion_statistic_multi_trial(null_functions, method='default', time_range=None, calibrate_threshold=2.58):
     statistics_list = []
+    # print(len(value))
     for functions in null_functions:
         statistics, ROI = get_excursion_statistic_single_trial(functions, method=method, time_range=time_range, calibrate_threshold=calibrate_threshold)
         statistics_list.append(statistics)
     return statistics_list
 
 def get_excursion_statistic_single_trial(functions, method='default', time_range=None, calibrate_threshold=2.58):
+    # assert len(functions)==4, len(functions)
     assert method in ['default', 'max', 'calibrate'], "Only support \'default\', \'max\', and \'calibrate\' "
     func1, func2, std1, std2 = functions
     if time_range is None:

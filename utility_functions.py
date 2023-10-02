@@ -449,7 +449,7 @@ def cross_prod(
             range(index_range[0], index_range[1] + 1))
     shifted_index_range_mask = np.array(
             range(shifted_index_range[0], shifted_index_range[1] + 1))
-    return corr[shifted_index_range_mask], index_range_mas
+    return corr[shifted_index_range_mask], index_range_mask
 
 def array_shift(x, shift, zero_pad=False):
     """Shift the array.
