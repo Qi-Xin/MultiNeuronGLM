@@ -2350,9 +2350,9 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
     if inference:
         pvalue_output = {}
         for i in range(len(probe_list)):
-            for j in range(-1, len(probe_list)):
+            for j in range(0, len(probe_list)):
                 filter_index = i,j
-                pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index][0]>statistics_null_output[filter_index]) \
+                pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index]>statistics_null_output[filter_index]) \
                     /len(statistics_null_output[filter_index])
 
     sns.reset_orig()
@@ -2440,7 +2440,7 @@ def plot_output_with_excursion(V1, stationary_output, running_output, statistics
             # plt.grid()
             
             if inference:
-                if pvalue_output[filter_index]<=p_th and j!=-1:
+                if j!=-1 and pvalue_output[filter_index]<=p_th:
                     # change yellow to ROI
                     stats_list = []
                     for ii, ROI in enumerate(ROI_output[filter_index]):
