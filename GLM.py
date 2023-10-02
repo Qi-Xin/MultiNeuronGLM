@@ -2192,36 +2192,27 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
     # To-do: simulation; 
     #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
     
-def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics_filter=None, 
-                               statistics_null_filter=None, ROI_filter=None, inference=True, 
-                               plot_baseline=True, plot_self=False, filter_amp=0.15, dpi=300, 
-                               colors=['b', 'r'], labels=['Stationary', 'Running'], p_th=0.05):
+def plot_function_with_excursion(V1, stationary_function, running_function, statistics_function=None, 
+                               statistics_null_function=None, ROI_function=None, inference=True, 
+                               plot_baseline=True, plot_self=False, function_amp=0.15, dpi=300, 
+                               colors=['b', 'r'], labels=['Stationary', 'Running'], p_th=0.05,
+                               plot_null_distribution=True,):
     transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
     probe_list = V1.selected_probes
     name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
-    filter_length = stationary_filter[1,2][0].shape[0]
+    function_length = stationary_function[1,2][0].shape[0]
     trial_length = V1.nt
 
     if inference:
         pvalue_toplot = {}
         for i in range(len(probe_list)):
             for j in range(0, len(probe_list)):
-                filter_index = i,j
-                pvalue_toplot[filter_index] = 1- \
-                    np.sum( statistics_filter[filter_index]>statistics_null_filter[filter_index]) \
-                        /len(statistics_null_filter[filter_index])
+                function_index = i,j
+                pvalue_toplot[function_index] = 1- \
+                    np.sum( statistics_function[function_index]>statistics_null_function[function_index]) \
+                        /len(statistics_null_function[function_index])
 
     sns.reset_orig()
-    # sns.set_theme()
-    
-    # plt.subplots(figsize=(6.9,4.6), dpi=dpi)
-    # BIGGER_SIZE = 8
-    # SMALL_SIZE = 7
-    # MEDIUM_SIZE = 7
-    # BIGGER_LW = 1
-    # SMALL_LW = 0.75
-    # utils.use_pdf_plot()
-        
     plt.subplots(figsize=(15,10), dpi=dpi)
     BIGGER_SIZE = 15
     MEDIUM_SIZE = 15
@@ -2231,16 +2222,13 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
-            # if j == -1 and (not plot_baseline):
-            #     continue
             i_plot = transfer_ij[i]
             j_plot = transfer_ij[j]
             if i==j and (not plot_self):
                 continue
             ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-            filter_index = i_plot,j_plot
-    #         print(filter_index)
-            y, ci = stationary_filter[filter_index]
+            function_index = i_plot,j_plot
+            y, ci = stationary_function[function_index]
             x = np.arange(y.shape[0])
             color = colors[0]
             label = labels[0]
@@ -2254,7 +2242,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 plt.plot(x, y,label=label, color=color)
                 plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
                 
-            y, ci = running_filter[filter_index]
+            y, ci = running_function[function_index]
             x = np.arange(y.shape[0])
             color = colors[1]
             label = labels[1]
@@ -2271,10 +2259,10 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 # plt.yticks([-filter_amp, 0, filter_amp])
                 plt.yticks([0])
                 # if i!=j and i_plot!=0:
-                plt.ylim([-filter_amp, filter_amp])
+                plt.ylim([-function_amp, function_amp])
                 plt.yticks(color='w')
-                plt.xticks([0, filter_length])
-                plt.xlim([0, filter_length])
+                plt.xticks([0, function_length])
+                plt.xlim([0, function_length])
 
             # Add xaxis to know where is above zero and where is below zero. 
             if j != -1:
@@ -2287,7 +2275,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
             # Show amplitute for the most left panels of coupling filters. 
             if j==0 or (j==1 and i==0):
                 plt.yticks(color='k')
-                plt.text(-0.2, 0.95, f'{filter_amp}', fontsize=SMALL_SIZE, transform=ax.transAxes)
+                plt.text(-0.2, 0.95, f'{function_amp}', fontsize=SMALL_SIZE, transform=ax.transAxes)
 
             # Add to {area} label
             if j==-1:
@@ -2306,159 +2294,36 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
 
             # plt.grid()
             
-            if inference and j!=-1:
+            if inference and j!=-1 and plot_null_distribution:
                 ins = ax.inset_axes([0.6,0.6,0.4,0.4])
-                sns.kdeplot(statistics_null_filter[filter_index], linewidth=BIGGER_LW, ax=ins, fill=True)
-                ins.axvline(statistics_filter[filter_index], linewidth=SMALL_LW, color='r')
+                sns.kdeplot(statistics_null_function[function_index], linewidth=BIGGER_LW, ax=ins, fill=True)
+                ins.axvline(statistics_function[function_index], linewidth=SMALL_LW, color='r')
                 ins.set_xticks([])
                 ins.set_yticks([])
                 ins.set_ylabel('')
 
             if inference:
-                if j!=-1 and pvalue_toplot[filter_index]<=p_th:
+                if j!=-1 and pvalue_toplot[function_index]<=p_th:
                     # change yellow to ROI
                     # stats_list = []
-                    # for ii, ROI in enumerate(ROI_filter[filter_index]):
-                    #     function1 = stationary_filter[filter_index][0]
-                    #     function2 = running_filter[filter_index][0]
+                    # for ii, ROI in enumerate(ROI_function[function_index]):
+                    #     function1 = stationaryfunction[function_index][0]
+                    #     function2 = running_function[function_index][0]
                     #     diff = np.abs(function1 - function2)
                     #     stats_list.append( np.sum(diff[ROI]) ) 
-                    # temp = ROI_filter[filter_index][np.argmax(stats_list)]
-                    temp = ROI_filter[filter_index][0]
+                    # temp = ROI_filter[function_index][np.argmax(stats_list)]
+                    temp = ROI_function[function_index][0]
                     x = np.array([temp.min(), temp.max()])
-                    plt.fill_between(x, np.array([-filter_amp,-filter_amp]), np.array([filter_amp,filter_amp]), \
+                    plt.fill_between(x, np.array([-function_amp,-function_amp]), np.array([function_amp,function_amp]), \
                                     color='yellow', alpha=.5)
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
-                    if pvalue_toplot[filter_index]>0:
-                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p={pvalue_toplot[filter_index]:.5f}', 
+                    if pvalue_toplot[function_index]>0:
+                        plt.text(0.47*function_length, 1.05*function_amp, f'p={pvalue_toplot[function_index]:.5f}', 
                                 fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_filter[filter_index]):.5f}', fontsize=SMALL_SIZE)
+                        plt.text(0.47*function_length, 1.05*function_amp, f'p<{1/len(statistics_null_function[function_index]):.5f}', fontsize=SMALL_SIZE)
 
-def plot_output_with_excursion(V1, stationary_output, running_output, statistics_output=None, 
-                               statistics_null_output=None, ROI_output=None, filter_amp = 1.3, 
-                               inference=True, output=False, colors=['b', 'r'], p_th=0.05):
-    transfer_ij = {-1:-1, 4:0, 5:1, 0:2, 1:3, 2:4, 3:5}
-    probe_list = V1.selected_probes
-    name_list = ['V1', 'LM', 'AL', 'RL', 'AM', 'PM']
-    fontsize = 15
-    filter_length = V1.nt
-    inhomo_amp = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
-    trial_length = V1.nt
-
-    if inference:
-        pvalue_output = {}
-        for i in range(len(probe_list)):
-            for j in range(0, len(probe_list)):
-                filter_index = i,j
-                pvalue_output[filter_index] = 1-np.sum( statistics_output[filter_index]>statistics_null_output[filter_index]) \
-                    /len(statistics_null_output[filter_index])
-
-    sns.reset_orig()
-    # sns.set_theme()
-    if output:
-        plt.subplots(figsize=(6.9,4.6))
-        SMALL_SIZE = 5
-        MEDIUM_SIZE = 7
-        BIGGER_SIZE = 8
-        BIGGER_LW = 1
-        SMALL_LW = 0.75
-        utils.use_pdf_plot()
-    else:
-        plt.subplots(figsize=(15,10))
-        BIGGER_SIZE = 15
-        MEDIUM_SIZE = 15
-        SMALL_SIZE = 10
-        BIGGER_LW = 2
-        SMALL_LW = 1.5
-
-    for i in range(len(probe_list)):
-        for j in range(-1, len(probe_list)):
-            i_plot = transfer_ij[i]
-            j_plot = transfer_ij[j]
-            if i==j:
-                continue
-            ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-            filter_index = i_plot,j_plot
-            y, ci = running_output[filter_index]
-            x = np.arange(y.shape[0])
-            if j == -1:
-                plt.plot(x, np.exp(y),label='running', color='r')
-                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='r', alpha=.3)
-            else:
-                plt.plot(x, y,label='running', color='r')
-                plt.fill_between(x, y-2*ci, y+2*ci, color='r', alpha=.3)
-                
-            y, ci = stationary_output[filter_index]
-            x = np.arange(y.shape[0])
-            if j == -1:
-                plt.plot(x, np.exp(y),label='stationary', color='b')
-                plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color='b', alpha=.3)
-                plt.xticks([0, trial_length/2, trial_length])
-                plt.xlim([0, trial_length])
-                # plt.ylim([0, inhomo_amp[i]])
-                # plt.yticks([0, inhomo_amp[i]])
-                
-            else:
-                plt.plot(x, y,label='stationary', color='b')
-                plt.fill_between(x, y-2*ci, y+2*ci, color='b', alpha=.3)
-                plt.yticks([0])
-                plt.ylim([-filter_amp, filter_amp])
-                plt.yticks(color='w')
-                plt.xticks([0, filter_length/2, filter_length])
-                plt.xlim([0, filter_length])
-
-            # Add xaxis to know where is above zero and where is below zero. 
-            if j != -1:
-                plt.axhline(0, ls='-', color='grey', lw=SMALL_LW, alpha=0.5)
-            # Only display "time (ms)" at the bottom row. 
-            if i == 5:
-                plt.xlabel('time (ms)', fontsize=SMALL_SIZE)
-            else:
-                plt.xticks(color='w')
-            # Show amplitute for the most left panels of coupling filters. 
-            if j==0 or (j==1 and i==0):
-                plt.yticks(color='k')
-                plt.text(-0.2, 0.95, f'{filter_amp}', fontsize=SMALL_SIZE, transform=ax.transAxes)
-
-            # Add to {area} label
-            if j==-1:
-                plt.text(-0.8, 0.5, f'To {name_list[i]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
-            # Add from {area} or "inhomo" label
-            if i==0:
-                if j==-1:
-                    plt.text(-0.15, 1.2, f'Inhomo baseline', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
-                else:
-                    plt.text(0.2, 1.2, f'From {name_list[j]}', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
-            # Mannually add from V1 label
-            if i==0 and j==-1:
-                ax = plt.subplot(6, 7, 1, frameon=True)
-                plt.text(1.4, 1.2, f'From V1', fontsize=MEDIUM_SIZE, transform=ax.transAxes)
-                ax = plt.subplot(6, 7, i*7+j+1+1, frameon=True)
-
-            # plt.grid()
-            
-            if inference:
-                if j!=-1 and pvalue_output[filter_index]<=p_th:
-                    # change yellow to ROI
-                    stats_list = []
-                    for ii, ROI in enumerate(ROI_output[filter_index]):
-                        function1 = stationary_output[filter_index][0]
-                        function2 = running_output[filter_index][0]
-                        diff = np.abs(function1 - function2)
-                        stats_list.append( np.sum(diff[ROI]) ) 
-                    temp = ROI_output[filter_index][np.argmax(stats_list)]
-                    x = np.array([temp.min(), temp.max()])
-                    plt.fill_between(x, np.array([-filter_amp,-filter_amp]), np.array([filter_amp,filter_amp]), \
-                                    color='yellow', alpha=.5)
-        #             ax.patch.set_alpha(0.3)
-        #             ax.set_facecolor('yellow')
-                    if pvalue_output[filter_index]>0:
-                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p={pvalue_output[filter_index]:.5f}', 
-                                fontsize=SMALL_SIZE)
-                    else:
-                        plt.text(0.47*filter_length, 1.05*filter_amp, f'p<{1/len(statistics_null_output[filter_index]):.5f}', fontsize=SMALL_SIZE)
 
 
 def corr(C):
