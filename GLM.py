@@ -2205,7 +2205,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
     if inference:
         pvalue_toplot = {}
         for i in range(len(probe_list)):
-            for j in range(-1, len(probe_list)):
+            for j in range(0, len(probe_list)):
                 filter_index = i,j
                 pvalue_toplot[filter_index] = 1- \
                     np.sum( statistics_filter[filter_index]>statistics_null_filter[filter_index]) \
@@ -2315,7 +2315,7 @@ def plot_filter_with_excursion(V1, stationary_filter, running_filter, statistics
                 ins.set_ylabel('')
 
             if inference:
-                if pvalue_toplot[filter_index]<=p_th and j!=-1:
+                if j!=-1 and pvalue_toplot[filter_index]<=p_th:
                     # change yellow to ROI
                     # stats_list = []
                     # for ii, ROI in enumerate(ROI_filter[filter_index]):
