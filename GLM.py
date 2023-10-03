@@ -2191,7 +2191,7 @@ def get_statistics_null_parametric_bootstrap(V1, membership, condition_ids, prob
         
     # To-do: simulation; 
     #        test statistics try: sum(abs(f)); excursion on abs(f); KL for positive
-    
+
 def plot_function_with_excursion(V1, stationary_function, running_function, statistics_function=None, 
                                statistics_null_function=None, ROI_function=None, inference=True, 
                                plot_baseline=True, plot_self=False, function_amp=0.15, dpi=300, 
@@ -2213,12 +2213,14 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
                         /len(statistics_null_function[function_index])
 
     sns.reset_orig()
-    plt.subplots(figsize=(15,10), dpi=dpi)
-    BIGGER_SIZE = 15
-    MEDIUM_SIZE = 15
-    SMALL_SIZE = 10
-    BIGGER_LW = 2
-    SMALL_LW = 1.5
+    
+    plt.subplots(figsize=(6.9,4.6), dpi=dpi)
+    utils.use_pdf_plot(**{'axes.linewidth':0.5, 'xtick.labelsize':5, 'ytick.labelsize':5})
+    BIGGER_SIZE = 7
+    MEDIUM_SIZE = 6
+    SMALL_SIZE = 5
+    BIGGER_LW = 1
+    SMALL_LW = 0.75
     
     for i in range(len(probe_list)):
         for j in range(-1, len(probe_list)):
@@ -2235,11 +2237,11 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
 
             if j == -1:
                 if plot_baseline:
-                    plt.plot(x, np.exp(y),label=label, color=color)
+                    plt.plot(x, np.exp(y),label=label, color=color, lw=SMALL_LW)
                     plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color=color, alpha=.3)
             else:
                 # Correct for different number of neurons in different areas
-                plt.plot(x, y,label=label, color=color)
+                plt.plot(x, y,label=label, color=color, lw=SMALL_LW)
                 plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
                 
             y, ci = running_function[function_index]
@@ -2249,12 +2251,12 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
 
             if j == -1:
                 if plot_baseline:
-                    plt.plot(x, np.exp(y),label=label, color=color)
+                    plt.plot(x, np.exp(y),label=label, color=color, lw=SMALL_LW)
                     plt.fill_between(x, np.exp((y-2*ci)), np.exp((y+2*ci)), color=color, alpha=.3)
                     plt.xticks([0, trial_length/2, trial_length])
                     plt.xlim([0, trial_length])
             else:
-                plt.plot(x, y,label=label, color=color)
+                plt.plot(x, y,label=label, color=color, lw=SMALL_LW)
                 plt.fill_between(x, (y-2*ci), (y+2*ci), color=color, alpha=.3)
                 # plt.yticks([-filter_amp, 0, filter_amp])
                 plt.yticks([0])
@@ -2319,10 +2321,11 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[function_index]>0:
-                        plt.text(0.47*function_length, 1.05*function_amp, f'p={pvalue_toplot[function_index]:.5f}', 
+                        plt.text(0.41*function_length, 1.05*function_amp, f'p={pvalue_toplot[function_index]:.5f}', 
                                 fontsize=SMALL_SIZE)
                     else:
                         plt.text(0.47*function_length, 1.05*function_amp, f'p<{1/len(statistics_null_function[function_index]):.5f}', fontsize=SMALL_SIZE)
+    # plt.tight_layout()
 
 
 

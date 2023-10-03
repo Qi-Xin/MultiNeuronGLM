@@ -153,13 +153,14 @@ VISUAL_AREA = ['VIS', 'VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl',
                'VISmmp', 'VISmma', 'VISli']
 
 from matplotlib import rcParams, rcParamsDefault
-def use_pdf_plot():
+def use_pdf_plot(**kwargs):
     sns.reset_orig()
     SMALL_SIZE = 5
     MEDIUM_SIZE = 6
     BIG_SIZE = 7
     # rcParams['font.size'] = SMALL_SIZE
     rcParams['lines.linewidth'] = 1
+    rcParams['axes.linewidth'] = 0.8  # Adjust as needed.
     rcParams['axes.labelsize'] = MEDIUM_SIZE
     rcParams['axes.titlesize'] = BIG_SIZE
     rcParams['figure.titlesize'] = BIG_SIZE
@@ -170,6 +171,12 @@ def use_pdf_plot():
     rcParams['ytick.major.size'] = 2  # length of y-axis major ticks
     rcParams['xtick.major.pad'] = 1  # Adjust as needed
     rcParams['ytick.major.pad'] = 1  # Adjust as needed
+
+    for key, value in kwargs.items():
+        rcParams[key] = value
+        
+    rcParams['xtick.major.width'] = rcParams['axes.linewidth']
+    rcParams['ytick.major.width'] = rcParams['axes.linewidth']
 
 def use_default_plot():
     sns.reset_orig()
