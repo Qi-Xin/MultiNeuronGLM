@@ -231,9 +231,9 @@ class Allen_dataset:
         self.all_trial_index = np.full(self.ntrial, True)
         
     def get_lfp(self, **kwargs):
-
+        self.lfp = {}
         for probe_name in self.selected_probes:
-            self.lfp = {}
+            
             temp_obj = Allen_LFP()
             probe_id = self.probes[self.probes['description']==probe_name].index[0]
             
@@ -259,7 +259,7 @@ class Allen_dataset:
             temp_obj.x = x[:, None]
             temp_obj.channel = lfp_data["channel"].values
             try:
-                temp_obj.structure_acronyms, temp_obj.intervals_lfp = self._session.channel_structure_intervals(self.channel)
+                temp_obj.structure_acronyms, temp_obj.intervals_lfp = self._session.channel_structure_intervals(temp_obj.channel)
             except:
                 temp_obj.structure_acronyms = np.array([np.nan], dtype=object)
                 temp_obj.intervals_lfp = np.array([ 0, lfp_temp.shape[0]])
