@@ -465,7 +465,8 @@ class PP_GLM():
             no_penalty_end = np.sum([self.basis_list[i].shape[1] for i in range(len(self.basis_list))])
             self.no_penalty.append(np.arange(int(no_penalty_start), int(no_penalty_end)))
 
-    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0):
+    def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0, 
+            smoothing=0):
         self.use_warping = False
         if self.target is None or self.output is None or self.response is None:
             self.target = target
@@ -485,7 +486,7 @@ class PP_GLM():
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
-                                              no_penalty_term_penalty=no_penalty_term_penalty)
+                                              no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
         elif method=='additional':
             self.results, self.a, self.intecept = poisson_regression_additional(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
                                                                                 a=self.a, intecept=self.intecept)
@@ -725,7 +726,7 @@ class PP_GLM():
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
-                                  no_penalty_term_penalty=0, acc_warping=False):
+                                  no_penalty_term_penalty=0, acc_warping=False, smoothing=0):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         self.use_warping = True
@@ -767,7 +768,7 @@ class PP_GLM():
             for iter in range(max_iter):
                 # update coef (based on *warped* effect_list[i_effect])
                 self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
-                         no_penalty_term_penalty=no_penalty_term_penalty)
+                         no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
                 
                 # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
                 
@@ -821,7 +822,7 @@ class PP_GLM():
             self.effect_list[i_effect] = X_baseline_warp
             
         self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
-                 no_penalty_term_penalty=no_penalty_term_penalty)
+                 no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
         # Finished fitting
         if fix_shifts is None and iter == max_iter:
             print("Maximum iteration reach!")
@@ -1493,7 +1494,8 @@ def poisson_regression(
         tol=1e-8,
         no_penalty=[],
         offset=None, 
-        no_penalty_term_penalty=0):
+        no_penalty_term_penalty=0, 
+        smoothing=0):
     """Fit Poisson GLM.
 
     The coefficients beta is fitted using Newton's method.
@@ -1516,17 +1518,28 @@ def poisson_regression(
     for no_penalty_term in no_penalty:
         penalty_vec[no_penalty_term] = no_penalty_term_penalty
     penalty_matrix = np.diag(penalty_vec.squeeze())
+    ### Second order difference matrix
+    X_average = X.reshape(-1, 500, num_predictor).mean(axis=0)
+    # X_average = X[:500,:]
+    D = np.diag(np.ones(X_average.shape[0]-1), k=-1) + np.diag(-2*np.ones(X_average.shape[0]), k=0) \
+        + np.diag(np.ones(X_average.shape[0]-1), k=1)
+    D = D[1:-1, :]
+    # print(X.shape, D.shape)
+    smoothing_penalty_matrix = D@X_average
     log_lmbda_hat = (X @ beta) + offset
 
-    nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2
+    nll = spike_trains_neg_log_likelihood(log_lmbda_hat, Y) + L2_pen * np.linalg.norm(beta*penalty_vec)**2\
+            + smoothing * np.linalg.norm(smoothing_penalty_matrix@beta)**2
     nll_old = np.inf
     for iter_index in range(max_num_iterations):
         # Newton's method.
         # g: search direction
         mu = np.exp((X @ beta) + offset)
-        grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta
-        hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix
-        g = np.linalg.pinv(hessian) @ grad 
+        grad = - (X.T @ Y) + (X.T @ mu) + 2*L2_pen * penalty_vec * beta \
+            + 2*smoothing * smoothing_penalty_matrix.T @ smoothing_penalty_matrix @ beta
+        hessian = (X.T) @ (mu * X) + 2*L2_pen * penalty_matrix \
+            + 2*smoothing * smoothing_penalty_matrix.T @ smoothing_penalty_matrix
+        g = np.linalg.pinv(hessian) @ grad
         lr = 1
         ALPHA = 0.4
         BETA = 0.2
@@ -1535,7 +1548,8 @@ def poisson_regression(
         while True:
             beta_tmp = beta - lr * g
             log_lmbd_tmp = (X @ beta_tmp) + offset
-            nll_left = spike_trains_neg_log_likelihood(log_lmbd_tmp, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2
+            nll_left = spike_trains_neg_log_likelihood(log_lmbd_tmp, Y) + L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2\
+                        + smoothing * np.linalg.norm(smoothing_penalty_matrix@beta_tmp)**2
             nll_right = nll - ALPHA * lr * grad.T @ g
 
             if (nll_left > nll_right or
@@ -1557,9 +1571,11 @@ def poisson_regression(
             break
         nll_old = nll
     # print(nll)
+    # print(spike_trains_neg_log_likelihood(log_lmbd_tmp, Y)/nll_left, L2_pen * np.linalg.norm(beta_tmp*penalty_vec)**2/nll_left,
+    #       smoothing * np.linalg.norm(smoothing_penalty_matrix@beta_tmp)**2/nll_left)
     # Get standard error
     mu = np.exp((X @ beta) + offset)
-    hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix
+    hessian = X.T @ (mu * X) + 2*L2_pen * penalty_matrix + 2*smoothing * smoothing_penalty_matrix.T @ smoothing_penalty_matrix
     inv_hessian = np.linalg.pinv(hessian)
     bse = np.sqrt(np.diag(inv_hessian))
     return poisson_regression_result(beta.squeeze(), bse, inv_hessian)
