@@ -301,7 +301,7 @@ class PP_GLM():
             add_constant_basis = False
             dt = 0.01
             spline_order = 2
-                        
+            
             early_knots_quan = [0, 0.3, 0.5]
             starting_quan = 0.7
             end_quan = 0.92
@@ -466,7 +466,7 @@ class PP_GLM():
             self.no_penalty.append(np.arange(int(no_penalty_start), int(no_penalty_end)))
 
     def fit(self, target, use_all=False, verbose=True, penalty=1e-10, method='mine', max_spike=None, no_penalty_term_penalty=0, 
-            smoothing=0):
+            smoothing=0, offset=None):
         self.use_warping = False
         if self.target is None or self.output is None or self.response is None:
             self.target = target
@@ -486,7 +486,7 @@ class PP_GLM():
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
-                                              no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
+                                              no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing, offset=offset)
         elif method=='additional':
             self.results, self.a, self.intecept = poisson_regression_additional(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
                                                                                 a=self.a, intecept=self.intecept)
@@ -1148,27 +1148,33 @@ def simulate_baseline_coupling_refractory(model_list, nepoch=1, verbose=False, o
                 
     return spikes_rcd, log_firing_rate_rcd, peaks_rcd
 
-def simulate_baseline_coupling(baseline_mat, coupling_mat):
+def simulate_baseline_coupling(baseline_mat, coupling_mat, ntrial=1):
     MAX_FIRING_RATE = np.log(10000)
-    max_histories, _, npop = coupling_mat.shape
+    max_histories, _, nneuron = coupling_mat.shape
     nt = baseline_mat.shape[0]
-    spikes = np.zeros((nt, npop, 1))
-    log_firing_rate = copy.deepcopy(baseline_mat[:,:,np.newaxis])
-    spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
     
-    for t in range(1, nt):
-        nhistories = min(t, max_histories)
-        temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
-        log_firing_rate[t,:,0] += temp_log_firing_rate
-        log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
-        spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
-    
-    log_firing_rate = log_firing_rate.squeeze()
-    spikes = spikes.squeeze()
-    return spikes, log_firing_rate
+    spikes_rcd = np.zeros((nt, nneuron, ntrial))
+    for itrial in range(ntrial):
+        spikes = np.zeros((nt, nneuron, 1))
+        log_firing_rate = copy.deepcopy(baseline_mat[:,:,np.newaxis])
+        spikes[0,:,0] = np.random.poisson(np.exp(log_firing_rate[0,:,0]))
+        for t in range(1, nt):
+            nhistories = min(t, max_histories)
+            temp_log_firing_rate = (coupling_mat[-nhistories:, :, :] * spikes[(t-nhistories):(t), :, :]).sum(axis=(0, 1))
+            log_firing_rate[t,:,0] += temp_log_firing_rate
+            log_firing_rate[t,:,0] = np.minimum(log_firing_rate[t,:,0], MAX_FIRING_RATE)
+            spikes[t,:,0] = np.random.poisson(np.exp(log_firing_rate[t,:,0]))
+        
+        log_firing_rate = log_firing_rate.squeeze()
+        spikes = spikes.squeeze()
+        if spikes.ndim == 1:
+            spikes = spikes[:, np.newaxis]
+        spikes_rcd[:,:,itrial] = spikes
+    return spikes_rcd, log_firing_rate
+
 
 #%% Plotting GLM
-def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None, linewidth=1):
+def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, color=None, use_exp=None, linewidth=1):
     start_col = 0
     for previous_id in range(effect_id):
         start_col += (model.effect_list[previous_id]).shape[1]
@@ -1176,12 +1182,13 @@ def plot_GLM_one_effect(model, effect_id, results=None, title=None, label=None, 
     end_col = start_col + nbasis
     if results is None:
         results = model.results
-    if model.basis_name[effect_id] in ['inhomogeneous_baseline',
-                                       'homogeneous_baseline', 
-                                       'time_warping_inhomogeneous_baseline']:
-        use_exp = True
-    else:
-        use_exp = False
+    if use_exp is None:
+        if model.basis_name[effect_id] in ['inhomogeneous_baseline',
+                                        'homogeneous_baseline', 
+                                        'time_warping_inhomogeneous_baseline']:
+            use_exp = True
+        else:
+            use_exp = False
     try:
         # try to get standard error from "results", if failed, just ignore standard error
         utils.plot_filter(model.basis_list[effect_id], results.params[start_col:end_col], 
