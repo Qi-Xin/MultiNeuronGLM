@@ -830,6 +830,9 @@ class PP_GLM():
         # self.inhomo_template = inhomo_template
         # self.nll = nll
         self.use_warping = True
+
+    def fit_individual_history_and_get_offset():
+        pass
         
 def fit_individual(model, target_probe, coupling_filter_params, verbose=True, penalty=1e-10, method='mine', max_spike=None):
     # print("Starting now!")
