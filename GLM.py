@@ -502,7 +502,10 @@ class PP_GLM():
         self.method = method
         self.max_spike = max_spike
         
-        self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
+        if offset is None:
+            self.log_lmbd = (self.predictors@self.results.params).reshape((self.nt, self.ntrial), order='F')
+        else:
+            self.log_lmbd = (self.predictors@self.results.params + offset.squeeze()).reshape((self.nt, self.ntrial), order='F') 
         if self.method == 'additional':
             self.log_lmbd = f_correct(self.log_lmbd, a=self.a, intecept=self.intecept)
             
@@ -726,7 +729,7 @@ class PP_GLM():
 
     def fit_time_warping_baseline(self, target, use_all=False, max_iter=100, penalty=1e-10, warp_interval=[[0, 0.15], [0.15, 0.35]], 
                                   tol=1e-10, method='mine', max_spike=None, fix_shifts=None, initial_shifts=None, verbose=True, 
-                                  no_penalty_term_penalty=0, acc_warping=False, smoothing=0):
+                                  no_penalty_term_penalty=0, acc_warping=False, smoothing=0, offset=None):
         assert 'inhomogeneous_baseline' in self.effect_type_list, "You must create an inhomogeneous baseline before changing it to time-warp baseline!"
         
         self.use_warping = True
@@ -738,6 +741,11 @@ class PP_GLM():
         BETA = 0.0   # to smooth the optimization process
         THETA = 0.9   # Mean converge
 
+        if offset is not None:
+            if offset.shape[1] == len(self.select_trials):
+                offset = offset[:, self.select_trials]
+            offset = offset.flatten('F')[:, np.newaxis]
+        
         # Find the effect index that should be warpped
         i_effect = [i_effect for i_effect,effect_type in enumerate(self.effect_type_list) 
             if effect_type=='inhomogeneous_baseline'][0]
@@ -768,7 +776,7 @@ class PP_GLM():
             for iter in range(max_iter):
                 # update coef (based on *warped* effect_list[i_effect])
                 self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
-                         no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
+                         no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing, offset=offset)
                 
                 # 'inhomo' and 'inhomo_template' are based on 'basis_list', so they are not warped
                 
@@ -777,6 +785,8 @@ class PP_GLM():
                 inhomo = result_output[i_effect]
                 total_output = np.vstack((result_output)).T
                 total_output = total_output.sum(axis=1)
+                if offset is not None:
+                    total_output += offset.squeeze()
                 minus_one_output = total_output - inhomo
                 if verbose:
                     print(f"After the {iter} th iteration of fitting: {self.nll}")
@@ -822,7 +832,7 @@ class PP_GLM():
             self.effect_list[i_effect] = X_baseline_warp
             
         self.fit(target, use_all=use_all, verbose=False, penalty=penalty, method=method, max_spike=max_spike, 
-                 no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing)
+                 no_penalty_term_penalty=no_penalty_term_penalty, smoothing=smoothing, offset=offset)
         # Finished fitting
         if fix_shifts is None and iter == max_iter:
             print("Maximum iteration reach!")
