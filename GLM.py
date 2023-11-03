@@ -481,7 +481,7 @@ class PP_GLM():
                 raise ValueError("target must be either str like \"probeC\" or numpy.ndarray!")
             if self.npadding is not None:
                 self.output = self.output[self.npadding:, :]
-            self.response = self.output.flatten('F')
+            self.response = self.output.flatten('F') 
         
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
