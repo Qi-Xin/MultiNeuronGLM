@@ -482,7 +482,7 @@ class PP_GLM():
             if self.npadding is not None:
                 self.output = self.output[self.npadding:, :]
             self.response = self.output.flatten('F')
-        
+         
         self.predictors = np.hstack(self.effect_list)
         if method=='mine':
             self.results = poisson_regression(self.response, self.predictors, L2_pen=penalty, no_penalty=self.no_penalty, 
