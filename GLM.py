@@ -2335,7 +2335,7 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
             # plt.grid()
             
             if inference and j!=-1 and plot_null_distribution:
-                ins = ax.inset_axes([0.6,0.6,0.4,0.4])
+                ins = ax.inset_axes([0.7,0.55,0.3,0.3])
                 sns.kdeplot(statistics_null_function[function_index], linewidth=BIGGER_LW, ax=ins, fill=True)
                 ins.axvline(statistics_function[function_index], linewidth=SMALL_LW, color='r')
                 ins.set_xticks([])
@@ -2354,15 +2354,20 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
                     # temp = ROI_filter[function_index][np.argmax(stats_list)]
                     temp = ROI_function[function_index][0]
                     x = np.array([temp.min(), temp.max()])
-                    plt.fill_between(x, np.array([-function_amp,-function_amp]), np.array([function_amp,function_amp]), \
-                                    color='yellow', alpha=.5)
+                    plt.fill_between(x, 
+                                     np.array([-function_amp,-function_amp]), 
+                                     np.array([function_amp,function_amp]), 
+                                     color='yellow', alpha=.5)
         #             ax.patch.set_alpha(0.3)
         #             ax.set_facecolor('yellow')
                     if pvalue_toplot[function_index]>0:
-                        plt.text(0.41*function_length, 1.05*function_amp, f'p={pvalue_toplot[function_index]:.5f}', 
+                        plt.text(0.41*function_length, 0.75*function_amp, 
+                                 f'p={pvalue_toplot[function_index]:.1e}', 
                                 fontsize=SMALL_SIZE)
                     else:
-                        plt.text(0.47*function_length, 1.05*function_amp, f'p<{1/len(statistics_null_function[function_index]):.5f}', fontsize=SMALL_SIZE)
+                        plt.text(0.41*function_length, 0.75*function_amp, 
+                                 f'p<{1/len(statistics_null_function[function_index]):.1e}', 
+                                 fontsize=SMALL_SIZE)
     # plt.tight_layout()
 
 
