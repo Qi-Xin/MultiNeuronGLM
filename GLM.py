@@ -25,6 +25,8 @@ from scipy.special import rel_entr
 import pickle
 from sklearn.model_selection import KFold
 from scipy.stats import wilcoxon, chi2
+from scipy.linalg import svd
+from sklearn.linear_model import LinearRegression
 
 import statsmodels.api as sm
 import statsmodels.genmod.generalized_linear_model as smm
@@ -2736,12 +2738,21 @@ def get_p(std1, corr1, std2, corr2, ntrial, conn):
         
         nll_diff_pop += model_nest_pop.nll - model_full_pop.nll
         df_diff_pop = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
+
+        ### Subspace model
+        width = 10
+        r = 1
+        split = int(nneuron/2)
+        X_3d = merge(spikes_rcd[:,:split,:], width=width)
+        Y_3d = merge(spikes_rcd[:,split:,:], width=width)
+        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r)['p_value']
         
     # return wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
     #     ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
         
-    return fisher_method(test_nll_full, test_nll_nest), \
-        ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
+    return (fisher_method(test_nll_full, test_nll_nest),
+        ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)),
+        result_subspace, )
         
         # wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
         # wilcoxon(test_nll_full_pop, test_nll_nest_pop, alternative='less')
@@ -2771,16 +2782,18 @@ def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn
     # ntimes = 10
     result = []
     result_pop = []
+    result_subspace = []
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
         ress = [pool.apply_async(get_p, (std1, corr1, std2, corr2, ntrial, conn)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
         for res in tqdm(ress):
-            result_temp, result_pop_temp = res.get()
+            result_temp, result_pop_temp, result_subspace_temp = res.get()
             result.append(result_temp)
             result_pop.append(result_pop_temp)
-    return result, result_pop
+            result_subspace.append(result_subspace_temp)
+    return result, result_pop, result_subspace
 
 
 def get_p_three_models(std1, corr1, std2, corr2, ntrial, conn):
@@ -2917,6 +2930,14 @@ def get_p_three_models(std1, corr1, std2, corr2, ntrial, conn):
         
         nll_diff_pop_nowarp = model_nest_pop.nll - model_full_pop.nll
         df_diff_pop_nowarp = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
+
+        ### Subspace model
+        width = 10
+        r = 1
+        split = int(nneuron/2)
+        X_3d = merge(spikes_rcd[:,:split,:], width=width)
+        Y_3d = merge(spikes_rcd[:,split:,:], width=width)
+        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r)['p_value']
         
     return fisher_method(test_nll_full, test_nll_nest), \
             ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
@@ -2931,14 +2952,98 @@ def get_ps_three_models(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntr
     result = []
     result_pop = []
     result_pop_nowarp = []
+    result_subspace = []
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
         ress = [pool.apply_async(get_p_three_models, (std1, corr1, std2, corr2, ntrial, conn)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
         for res in tqdm(ress):
-            result_temp, result_pop_temp, result_pop_temp_nowarp = res.get()
+            result_temp, result_pop_temp, result_pop_temp_nowarp, result_subspace_temp = res.get()
             result.append(result_temp)
             result_pop.append(result_pop_temp)
             result_pop_nowarp.append(result_pop_temp_nowarp)
-    return result, result_pop, result_pop_nowarp
+            result_subspace.append(result_subspace_temp)
+    return result, result_pop, result_pop_nowarp, result_subspace
+
+
+# Merge every width elements along the first axis for both input matrices
+def merge(matrix, width=10):
+    # Reshape and then take the mean along the new axis
+    new_shape = (matrix.shape[0] // width, width) + matrix.shape[1:]
+    return matrix.reshape(new_shape).sum(axis=1)
+
+def reduced_rank_regression_test(X, Y, r):
+    """
+    Perform reduced rank regression (RRR) and conduct a likelihood ratio test to determine 
+    whether X and Y are significantly associated.
+    
+    Parameters:
+    X (numpy.ndarray): Input matrix of shape (n_samples, n_features).
+    Y (numpy.ndarray): Output matrix of shape (n_samples, n_outputs).
+    r (int): Desired rank for the reduced rank regression.
+
+    Returns:
+    dict: A dictionary containing the reduced rank coefficient matrix, likelihood ratio test statistic, and p-value.
+    """
+    # Center the data
+    X -= X.mean(axis=2)[:,:,None]
+    Y -= Y.mean(axis=2)[:,:,None]
+
+    # Flatten X and Y along the first and third dimensions
+    nt, n_features, ntrial = X.shape
+    _, n_outputs, _ = Y.shape
+    
+    # X_flat = X.reshape(-1, n_features)
+    # Y_flat = Y.reshape(-1, n_outputs)
+    X_flat = X.transpose(2, 0, 1).reshape(-1, n_features)
+    Y_flat = Y.transpose(2, 0, 1).reshape(-1, n_outputs)
+
+    X, Y = X_flat, Y_flat
+    n_samples, n_features = X.shape
+    n_outputs = Y.shape[1]
+
+    # Step 1: Fit the Null Model (Mean-only model for Y)
+    Y_mean = np.mean(Y, axis=0)
+    null_rss = np.sum((Y - Y_mean) ** 2)  # Residual sum of squares for null model
+
+    # Step 2: Fit the Reduced Rank Regression Model
+    linreg = LinearRegression().fit(X, Y)
+    B_OLS = linreg.coef_.T  # Ordinary Least Squares coefficient matrix (n_outputs x n_features)
+
+    # Perform singular value decomposition (SVD) on B_OLS
+    U, D, Vt = svd(B_OLS, full_matrices=False)
+
+    # Step 3: Truncate U, D, and Vt to rank r
+    U_r = U[:, :r]
+    D_r = D[:r]
+    Vt_r = Vt[:r, :]
+
+    # Construct the reduced rank coefficient matrix
+    B_rrr = U_r @ np.diag(D_r) @ Vt_r  # Shape: (n_outputs, n_features)
+
+    # Step 4: Make predictions using the reduced rank coefficients
+    Y_pred = X @ B_rrr  # Shape of B_rrr.T: (n_features, n_outputs)
+
+    # Step 5: Compute the RSS for the Reduced Rank Model
+    rrr_rss = np.sum((Y - Y_pred) ** 2)
+
+    # Step 6: Perform the Likelihood Ratio Test
+    # Degrees of freedom for null model (rank 0) vs reduced rank model (rank r)
+    df_null = n_samples * n_outputs
+    df_rrr = n_samples * n_outputs - r * (n_features + n_outputs - r)
+
+    # Compute the likelihood ratio statistic
+    lrt_stat = (null_rss - rrr_rss) / rrr_rss * (n_samples - r)
+
+    # Under the null hypothesis, the LRT statistic follows a chi-squared distribution
+    p_value = chi2.sf(lrt_stat, df_null - df_rrr)
+
+    # Return results as a dictionary
+    results = {
+        'B_rrr': B_rrr,           # Reduced rank coefficient matrix
+        'lrt_stat': lrt_stat,     # Likelihood ratio test statistic
+        'p_value': p_value        # p-value from the test
+    }
+
+    return results
