@@ -2369,7 +2369,7 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
                                     f'p={pvalue_toplot[function_index]:.2f}', 
                                     fontsize=SMALL_SIZE)
                         else:
-                            plt.text(0.35*function_length, 0.75*function_amp, 
+                            plt.text(0.35*function_length, 0.72*function_amp, 
                                     'p='+format_scientific_one_digit_exponent(pvalue_toplot[function_index]), 
                                     fontsize=SMALL_SIZE)
                     else:
@@ -2381,8 +2381,8 @@ def plot_function_with_excursion(V1, stationary_function, running_function, stat
 def format_scientific_one_digit_exponent(value):
     # make the value into a proper scientific notation
     exponent = int(np.log10(abs(value)))
-    mantissa = value / 10**exponent
-    return f"{mantissa:.1f}$x 10^{{{exponent}}}$"
+    mantissa = value / 10**exponent *10
+    return f"{mantissa:.1f}$x 10^{{{exponent-1}}}$"
 
 # def format_scientific_one_digit_exponent(number):
 #     """ Formats a number in scientific notation with only one digit after 'e' """
