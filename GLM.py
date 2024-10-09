@@ -2740,7 +2740,7 @@ def get_p(std1, corr1, std2, corr2, ntrial, conn):
         df_diff_pop = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
 
         ### Subspace model
-        width = 10
+        width = 50
         r = 1
         split = int(nneuron/2)
         X_3d = merge(spikes_rcd[:,:split,:], width=width)
