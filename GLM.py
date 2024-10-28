@@ -2497,7 +2497,8 @@ def EIF_simulator(std1, corr1, std2, corr2, ntrial, conn, return_current=False):
 
     J = np.zeros((nneuron, nneuron)) # From row i to column j
     nneuron_part = int(nneuron/2)
-    J[0:nneuron_part,nneuron_part:] = conn
+    # J[0:nneuron_part,nneuron_part:] = conn
+    J[0:nneuron_part,nneuron_part:] = np.random.lognormal(mean=np.log(conn), sigma=0.4, size=(nneuron_part, nneuron_part))
     J[0:nneuron_part,0:nneuron_part] = 0.0
     J[nneuron_part:,nneuron_part:] = 0.0
 
@@ -2932,7 +2933,7 @@ def get_p_three_models(std1, corr1, std2, corr2, ntrial, conn):
         df_diff_pop_nowarp = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
 
         ### Subspace model
-        width = 10
+        width = 20
         r = 1
         split = int(nneuron/2)
         X_3d = merge(spikes_rcd[:,:split,:], width=width)
@@ -3034,7 +3035,7 @@ def reduced_rank_regression_test(X, Y, r):
     df_rrr = n_samples * n_outputs - r * (n_features + n_outputs - r)
 
     # Compute the likelihood ratio statistic
-    lrt_stat = (null_rss - rrr_rss) / rrr_rss * (n_samples - r)
+    lrt_stat = 2 * (null_rss - rrr_rss)
 
     # Under the null hypothesis, the LRT statistic follows a chi-squared distribution
     p_value = chi2.sf(lrt_stat, df_null - df_rrr)
