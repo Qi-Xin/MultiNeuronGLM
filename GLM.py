@@ -2498,9 +2498,16 @@ def EIF_simulator(std1, corr1, std2, corr2, ntrial, conn, return_current=False):
     J = np.zeros((nneuron, nneuron)) # From row i to column j
     nneuron_part = int(nneuron/2)
     # J[0:nneuron_part,nneuron_part:] = conn
-    J[0:nneuron_part,nneuron_part:] = np.random.lognormal(mean=np.log(conn), sigma=0.4, size=(nneuron_part, nneuron_part))
-    J[0:nneuron_part,0:nneuron_part] = 0.0
-    J[nneuron_part:,nneuron_part:] = 0.0
+    J[0:nneuron_part,nneuron_part:] = (
+        np.random.lognormal(mean=np.log(conn), sigma=0.4, size=(nneuron_part, nneuron_part)) 
+        if conn!=0 else 0.0
+    )
+    J[0:nneuron_part,0:nneuron_part] = (
+        np.random.lognormal(mean=np.log(0.005), sigma=0.4, size=(nneuron_part, nneuron_part)) 
+    )
+    J[nneuron_part:,nneuron_part:] = (
+        np.random.lognormal(mean=np.log(0.005), sigma=0.4, size=(nneuron_part, nneuron_part)) 
+    )
 
     baseline = 0.0
     bump_amp = 0.25
@@ -2656,15 +2663,6 @@ def get_p(std1, corr1, std2, corr2, ntrial, conn):
         else:
             spike_trains_target.append(spikes_rcd[:,ineuron,:])
     
-    # kf = KFold(n_splits=nfold)
-    # for ifold, (train_index, test_index) in enumerate(kf.split(np.ones(ntrial))):
-    #     if ifold!=0:
-    #         break
-        # coupling_rcd_once = []
-        # training_trials = np.array( [False]*ntrial )
-        # training_trials[train_index] = True
-        # test_trials = np.logical_not(training_trials)
-        
     for ifold in range(1):
 
         all_trials = np.array( [True]*ntrial )
@@ -2751,6 +2749,10 @@ def get_p(std1, corr1, std2, corr2, ntrial, conn):
     # return wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
     #     ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
         
+    # return (None,
+    #     None,
+    #     result_subspace, )
+
     return (fisher_method(test_nll_full, test_nll_nest),
         ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)),
         result_subspace, )
@@ -2797,7 +2799,7 @@ def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn
     return result, result_pop, result_subspace
 
 
-def get_p_three_models(std1, corr1, std2, corr2, ntrial, conn):
+def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
 
     # std1 = 0
     # corr1 = 0.0
@@ -2933,18 +2935,22 @@ def get_p_three_models(std1, corr1, std2, corr2, ntrial, conn):
         df_diff_pop_nowarp = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
 
         ### Subspace model
-        width = 20
+        width = 50
+        n_permutations = 10**4
         r = 1
         split = int(nneuron/2)
         X_3d = merge(spikes_rcd[:,:split,:], width=width)
         Y_3d = merge(spikes_rcd[:,split:,:], width=width)
-        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r)['p_value']
+        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r, n_permutations=n_permutations)['p_value']
         
-    return fisher_method(test_nll_full, test_nll_nest), \
-            ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
-            ((nll_diff_pop_nowarp, df_diff_pop_nowarp), chi2.sf(2*nll_diff_pop_nowarp, df_diff_pop_nowarp))
+    return (
+        fisher_method(test_nll_full, test_nll_nest),
+        ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)),
+        ((nll_diff_pop_nowarp, df_diff_pop_nowarp), chi2.sf(2*nll_diff_pop_nowarp, df_diff_pop_nowarp)),
+        result_subspace
+    )
 
-def get_ps_three_models(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008):
+def get_ps_four_models(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008):
     import multiprocessing
     import os
 
@@ -2956,7 +2962,7 @@ def get_ps_three_models(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntr
     result_subspace = []
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-        ress = [pool.apply_async(get_p_three_models, (std1, corr1, std2, corr2, ntrial, conn)) 
+        ress = [pool.apply_async(get_p_four_models, (std1, corr1, std2, corr2, ntrial, conn)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
         for res in tqdm(ress):
@@ -2974,19 +2980,8 @@ def merge(matrix, width=10):
     new_shape = (matrix.shape[0] // width, width) + matrix.shape[1:]
     return matrix.reshape(new_shape).sum(axis=1)
 
-def reduced_rank_regression_test(X, Y, r):
-    """
-    Perform reduced rank regression (RRR) and conduct a likelihood ratio test to determine 
-    whether X and Y are significantly associated.
-    
-    Parameters:
-    X (numpy.ndarray): Input matrix of shape (n_samples, n_features).
-    Y (numpy.ndarray): Output matrix of shape (n_samples, n_outputs).
-    r (int): Desired rank for the reduced rank regression.
 
-    Returns:
-    dict: A dictionary containing the reduced rank coefficient matrix, likelihood ratio test statistic, and p-value.
-    """
+def reduced_rank_regression_test(X, Y, r, n_permutations=1000):
     # Center the data
     X -= X.mean(axis=2)[:,:,None]
     Y -= Y.mean(axis=2)[:,:,None]
@@ -2995,8 +2990,6 @@ def reduced_rank_regression_test(X, Y, r):
     nt, n_features, ntrial = X.shape
     _, n_outputs, _ = Y.shape
     
-    # X_flat = X.reshape(-1, n_features)
-    # Y_flat = Y.reshape(-1, n_outputs)
     X_flat = X.transpose(2, 0, 1).reshape(-1, n_features)
     Y_flat = Y.transpose(2, 0, 1).reshape(-1, n_outputs)
 
@@ -3004,47 +2997,67 @@ def reduced_rank_regression_test(X, Y, r):
     n_samples, n_features = X.shape
     n_outputs = Y.shape[1]
 
-    # Step 1: Fit the Null Model (Mean-only model for Y)
-    Y_mean = np.mean(Y, axis=0)
-    null_rss = np.sum((Y - Y_mean) ** 2)  # Residual sum of squares for null model
-
-    # Step 2: Fit the Reduced Rank Regression Model
+    # Fit the Reduced Rank Regression Model
     linreg = LinearRegression().fit(X, Y)
-    B_OLS = linreg.coef_.T  # Ordinary Least Squares coefficient matrix (n_outputs x n_features)
+    B_OLS = linreg.coef_.T
 
-    # Perform singular value decomposition (SVD) on B_OLS
+    # Perform SVD and construct the reduced rank coefficient matrix
     U, D, Vt = svd(B_OLS, full_matrices=False)
-
-    # Step 3: Truncate U, D, and Vt to rank r
     U_r = U[:, :r]
     D_r = D[:r]
     Vt_r = Vt[:r, :]
+    B_rrr = U_r @ np.diag(D_r) @ Vt_r
 
-    # Construct the reduced rank coefficient matrix
-    B_rrr = U_r @ np.diag(D_r) @ Vt_r  # Shape: (n_outputs, n_features)
+    # Make predictions and compute RSS for the Reduced Rank Model
+    Y_pred = X @ B_rrr
+    residuals_full = Y - Y_pred
+    RSS_full = np.sum(residuals_full ** 2)
+    sigma_squared_full = RSS_full / (n_samples*n_outputs)
 
-    # Step 4: Make predictions using the reduced rank coefficients
-    Y_pred = X @ B_rrr  # Shape of B_rrr.T: (n_features, n_outputs)
+    # Compute the observed LRT statistic
+    observed_stat = sigma_squared_full
 
-    # Step 5: Compute the RSS for the Reduced Rank Model
-    rrr_rss = np.sum((Y - Y_pred) ** 2)
+    # Permutation test
+    permuted_stats = []
+    for i_permutations in (range(n_permutations)):
+        # Permute Y
+        Y_permuted = np.random.permutation(Y)
+        
+        # Recalculate RSS_null (remains the same)
+        
+        # Fit RRR on permuted data
+        linreg_perm = LinearRegression().fit(X, Y_permuted)
+        B_OLS_perm = linreg_perm.coef_.T
 
-    # Step 6: Perform the Likelihood Ratio Test
-    # Degrees of freedom for null model (rank 0) vs reduced rank model (rank r)
-    df_null = n_samples * n_outputs
-    df_rrr = n_samples * n_outputs - r * (n_features + n_outputs - r)
+        U_perm, D_perm, Vt_perm = svd(B_OLS_perm, full_matrices=False)
+        U_r_perm = U_perm[:, :r]
+        D_r_perm = D_perm[:r]
+        Vt_r_perm = Vt_perm[:r, :]
+        B_rrr_perm = U_r_perm @ np.diag(D_r_perm) @ Vt_r_perm
 
-    # Compute the likelihood ratio statistic
-    lrt_stat = 2 * (null_rss - rrr_rss)
+        Y_pred_perm = X @ B_rrr_perm
+        residuals_full_perm = Y_permuted - Y_pred_perm
+        RSS_full_perm = np.sum(residuals_full_perm ** 2)
+        sigma_squared_full_perm = RSS_full_perm / (n_samples*n_outputs)
 
-    # Under the null hypothesis, the LRT statistic follows a chi-squared distribution
-    p_value = chi2.sf(lrt_stat, df_null - df_rrr)
+        # Compute LRT statistic for permuted data
+        stat_perm = sigma_squared_full_perm
+        permuted_stats.append(stat_perm)
+    
+    # Calculate p-value
+    p_value = np.mean(np.array(permuted_stats) <= observed_stat)
 
-    # Return results as a dictionary
-    results = {
-        'B_rrr': B_rrr,           # Reduced rank coefficient matrix
-        'lrt_stat': lrt_stat,     # Likelihood ratio test statistic
-        'p_value': p_value        # p-value from the test
+    if p_value == 0:
+        p_value = 1/n_permutations
+        # If p-value is 0, estimate it using normal approximation of permuted statistics
+        # z_score = (observed_stat - np.mean(permuted_stats)) / np.std(permuted_stats)
+        # p_value = scipy.stats.norm.cdf(z_score)
+
+    return {
+        'B_rrr': B_rrr,
+        'stat': observed_stat,
+        'p_value': p_value,
+        'permuted_stats': permuted_stats,
+        'permuted_stats_mean': np.mean(permuted_stats), 
+        "permuted_stats_std": np.std(permuted_stats),
     }
-
-    return results
