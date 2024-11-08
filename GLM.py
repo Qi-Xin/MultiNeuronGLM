@@ -2618,7 +2618,7 @@ def EIF_simulator(std1, corr1, std2, corr2, ntrial, conn, return_current=False):
         return spikes_rcd[padding:,:,:], I_ext[npadding:,:,:]
 
     
-def get_p(std1, corr1, std2, corr2, ntrial, conn):
+def get_p(std1, corr1, std2, corr2, ntrial, conn, skip):
 
     # std1 = 0
     # corr1 = 0.0
@@ -2668,94 +2668,95 @@ def get_p(std1, corr1, std2, corr2, ntrial, conn):
         all_trials = np.array( [True]*ntrial )
 
         ### Single neuron level model
-        for output_spike_train in spike_trains_target:
+        if not skip[0]:
+            for output_spike_train in spike_trains_target:
 
-            model_full = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
-            model_full.add_effect("inhomogeneous_baseline", num=num, apply_no_penalty=True)
-            for input_spike_train in spike_trains_source:
-                model_full.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-            for input_spike_train in spike_trains_target:
-                model_full.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-            model_full.fit(target=output_spike_train, method='mine', penalty=penalty, verbose=False)
-            # test_nll_full.append( model_full.test(test_trials) )
-            test_nll_full.append( model_full.nll )
-            
-#             coupling_rcd_once.append( np.mean(model_full.get_filter()[1:11], axis=0) )
-            
-            model_nest = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
-            model_nest.add_effect("inhomogeneous_baseline", num=num, apply_no_penalty=True)
-            for input_spike_train in spike_trains_target:
-                model_nest.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-            model_nest.fit(target=output_spike_train, method='mine', penalty=penalty, verbose=False)
-            # test_nll_nest.append( model_nest.test(test_trials) )
-            test_nll_nest.append( model_nest.nll )
-            nll_diff += model_nest.nll - model_full.nll
+                model_full = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
+                model_full.add_effect("inhomogeneous_baseline", num=num, apply_no_penalty=True)
+                for input_spike_train in spike_trains_source:
+                    model_full.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+                for input_spike_train in spike_trains_target:
+                    model_full.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+                model_full.fit(target=output_spike_train, method='mine', penalty=penalty, verbose=False)
+                # test_nll_full.append( model_full.test(test_trials) )
+                test_nll_full.append( model_full.nll )
+                
+    #             coupling_rcd_once.append( np.mean(model_full.get_filter()[1:11], axis=0) )
+                
+                model_nest = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
+                model_nest.add_effect("inhomogeneous_baseline", num=num, apply_no_penalty=True)
+                for input_spike_train in spike_trains_target:
+                    model_nest.add_effect("coupling", raw_input=input_spike_train, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+                model_nest.fit(target=output_spike_train, method='mine', penalty=penalty, verbose=False)
+                # test_nll_nest.append( model_nest.test(test_trials) )
+                test_nll_nest.append( model_nest.nll )
+                nll_diff += model_nest.nll - model_full.nll
             
 
         ### Population level model
-        output_spike_train_pool = np.zeros((nt, ntrial))
-        for output_spike_train in spike_trains_target:
-            output_spike_train_pool += output_spike_train
-        input_spike_train_pool = np.zeros((nt, ntrial))
-        for input_spike_train in spike_trains_source:
-            input_spike_train_pool += input_spike_train
-        
-        model_full_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
-        model_full_pop.add_effect("inhomogeneous_baseline", num=num_pop, apply_no_penalty=True)
-        model_full_pop.add_effect("coupling", raw_input=input_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-        model_full_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-        model_full_pop.add_effect('refractory_additive', raw_input=output_spike_train_pool, tau=tau, 
-                                  num=num_f_refractory, apply_no_penalty=False)
-        # model_full_pop.fit(target=output_spike_train_pool, method='mine', penalty=penalty_pop, verbose=False)
-        model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
-                                                 warp_interval=[[0, 0.15],[0.15, 0.35]], 
-                                                 method='mine', penalty=penalty_pop, verbose=False,)
-                                                #  initial_shifts='peaks')
-#         model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
-#                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
-#                                                  method='mine', penalty=penalty_pop, verbose=False, 
-#                                                  fix_shifts=best_shifts)
-        # test_nll_full_pop.append( model_full_pop.test(test_trials) )
-        test_nll_full_pop.append( model_full_pop.nll )
+        if not skip[1]:
+            output_spike_train_pool = np.zeros((nt, ntrial))
+            for output_spike_train in spike_trains_target:
+                output_spike_train_pool += output_spike_train
+            input_spike_train_pool = np.zeros((nt, ntrial))
+            for input_spike_train in spike_trains_source:
+                input_spike_train_pool += input_spike_train
+            
+            model_full_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
+            model_full_pop.add_effect("inhomogeneous_baseline", num=num_pop, apply_no_penalty=True)
+            model_full_pop.add_effect("coupling", raw_input=input_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+            model_full_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+            model_full_pop.add_effect('refractory_additive', raw_input=output_spike_train_pool, tau=tau, 
+                                    num=num_f_refractory, apply_no_penalty=False)
+            # model_full_pop.fit(target=output_spike_train_pool, method='mine', penalty=penalty_pop, verbose=False)
+            model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
+                                                    warp_interval=[[0, 0.15],[0.15, 0.35]], 
+                                                    method='mine', penalty=penalty_pop, verbose=False,)
+                                                    #  initial_shifts='peaks')
+    #         model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
+    #                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
+    #                                                  method='mine', penalty=penalty_pop, verbose=False, 
+    #                                                  fix_shifts=best_shifts)
+            # test_nll_full_pop.append( model_full_pop.test(test_trials) )
+            test_nll_full_pop.append( model_full_pop.nll )
 
-        model_nest_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
-        model_nest_pop.add_effect("inhomogeneous_baseline", num=num_pop, apply_no_penalty=True)
-        model_nest_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
-        model_nest_pop.add_effect('refractory_additive', raw_input=output_spike_train_pool, tau=tau, 
-                                  num=num_f_refractory, apply_no_penalty=False)
-        # model_nest_pop.fit(target=output_spike_train_pool, method='mine', penalty=penalty_pop, verbose=False)
-        model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
-                                                 warp_interval=[[0, 0.15],[0.15, 0.35]], 
-                                                 method='mine', penalty=penalty_pop, verbose=False,)
-                                                #  initial_shifts='peaks')
-#         model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
-#                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
-#                                                  method='mine', penalty=penalty_pop, verbose=False,
-#                                                 fix_shifts=best_shifts)
-        # test_nll_nest_pop.append( model_nest_pop.test(test_trials) )
-        test_nll_nest_pop.append( model_nest_pop.nll )
-        
-        nll_diff_pop += model_nest_pop.nll - model_full_pop.nll
-        df_diff_pop = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
+            model_nest_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
+            model_nest_pop.add_effect("inhomogeneous_baseline", num=num_pop, apply_no_penalty=True)
+            model_nest_pop.add_effect("coupling", raw_input=output_spike_train_pool, num=num_cp, peaks_max=peaks_max, nonlinear=1)
+            model_nest_pop.add_effect('refractory_additive', raw_input=output_spike_train_pool, tau=tau, 
+                                    num=num_f_refractory, apply_no_penalty=False)
+            # model_nest_pop.fit(target=output_spike_train_pool, method='mine', penalty=penalty_pop, verbose=False)
+            model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
+                                                    warp_interval=[[0, 0.15],[0.15, 0.35]], 
+                                                    method='mine', penalty=penalty_pop, verbose=False,)
+                                                    #  initial_shifts='peaks')
+    #         model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
+    #                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
+    #                                                  method='mine', penalty=penalty_pop, verbose=False,
+    #                                                 fix_shifts=best_shifts)
+            # test_nll_nest_pop.append( model_nest_pop.test(test_trials) )
+            test_nll_nest_pop.append( model_nest_pop.nll )
+            
+            nll_diff_pop += model_nest_pop.nll - model_full_pop.nll
+            df_diff_pop = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
 
         ### Subspace model
-        width = 50
-        r = 1
-        split = int(nneuron/2)
-        X_3d = merge(spikes_rcd[:,:split,:], width=width)
-        Y_3d = merge(spikes_rcd[:,split:,:], width=width)
-        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r)['p_value']
+        if not skip[2]:
+            width = 50
+            r = 1
+            split = int(nneuron/2)
+            X_3d = merge(spikes_rcd[:,:split,:], width=width)
+            Y_3d = merge(spikes_rcd[:,split:,:], width=width)
+            result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r)['p_value']
         
     # return wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
     #     ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)), \
-        
-    # return (None,
-    #     None,
-    #     result_subspace, )
 
-    return (fisher_method(test_nll_full, test_nll_nest),
-        ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)),
-        result_subspace, )
+    return (
+        fisher_method(test_nll_full, test_nll_nest) if not skip[0] else None,
+        ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)) if not skip[1] else None,
+        result_subspace if not skip[2] else None, 
+        )
         
         # wilcoxon(test_nll_full, test_nll_nest, alternative='less'), \
         # wilcoxon(test_nll_full_pop, test_nll_nest_pop, alternative='less')
@@ -2777,7 +2778,7 @@ def fisher_method(test_nll_full, test_nll_nest):
 def split_lrt(nll_full, nll_nest):
     return ( (nll_full, nll_nest), 1/np.exp(-nll_full+nll_nest) )
 
-def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008):
+def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008, skip=[False, False, False]):
     import multiprocessing
     import os
 
@@ -2788,7 +2789,7 @@ def get_ps(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn
     result_subspace = []
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
-        ress = [pool.apply_async(get_p, (std1, corr1, std2, corr2, ntrial, conn)) 
+        ress = [pool.apply_async(get_p, (std1, corr1, std2, corr2, ntrial, conn, skip)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
         for res in tqdm(ress):
@@ -2936,7 +2937,7 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
 
         ### Subspace model
         width = 50
-        n_permutations = 10**4
+        n_permutations = 10**3
         r = 1
         split = int(nneuron/2)
         X_3d = merge(spikes_rcd[:,:split,:], width=width)
