@@ -279,13 +279,12 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_al
     """
     spike_train = dataset.spike_train
     condition_list = dataset.presentation_table['stimulus_condition_id']
-    nt = len(spike_train.iloc[0,0])
-    pooled_spike_train = np.zeros((nt, spike_train.shape[1]))
-    
-    for itrial in range(spike_train.shape[1]):
+    nt, nneuron, ntrial = spike_train.shape
+    pooled_spike_train = np.zeros((nt, ntrial))
+
+    for itrial in range(ntrial):
         try:
-            trial = spike_train.columns[itrial]
-            current_condition = condition_list.loc[trial]
+            current_condition = condition_list.loc[itrial]
             current_membership = membership[np.where(condition_ids==current_condition)[0][0]]
             idx = current_membership[(current_membership['probe']==probe_name) \
                 & (current_membership['group_id']==group_id)].index.values
@@ -297,10 +296,9 @@ def pooling_pop(membership, condition_ids, dataset, probe_name, group_id, use_al
             idx = dataset._session.units[
                 dataset._session.units['ecephys_structure_acronym'].isin(VISUAL_AREA) &
                 dataset._session.units['probe_description'].isin([probe_name])].index.values
-            # idx = dataset._session.units[dataset._session.units['probe_description']==probe_name]
-        new_df =  spike_train.loc[idx]
-        for iunit in range(new_df.shape[0]):
-            pooled_spike_train[:,itrial] += new_df.iloc[iunit, itrial]
+        for unit_id in idx:
+            iunit = np.where(unit_id==dataset.unit_ids)[0][0]
+            pooled_spike_train[:,itrial] += spike_train[:, iunit, itrial]
     return pooled_spike_train
     
 
