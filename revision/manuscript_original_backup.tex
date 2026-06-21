@@ -1,0 +1,654 @@
+\documentclass[12pt]{article}
+\usepackage[top=1.2in, bottom=1.2in, left=1.2in, right=1.2in]{geometry}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx} 
+\usepackage{titlesec} 
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\usepackage{graphics,graphicx,picture}
+\usepackage{multicol}
+% \usepackage{indentfirst}
+\usepackage{afterpage}
+
+\usepackage{floatrow}
+\usepackage{caption}
+\usepackage[colorlinks,linkcolor=blue, citecolor=blue]{hyperref}
+\usepackage[ruled,vlined]{algorithm2e}
+\usepackage[label font=bf,labelformat=simple]{subfig}% <-- changed
+\floatsetup[figure]{style=plain,subcapbesideposition=top}
+\usepackage[width=7in]{caption}
+\renewcommand{\thesubfigure}{\Alph{subfigure}}
+
+\usepackage{natbib}
+\bibliographystyle{unsrtnat}
+\setcitestyle{numbers,open={[},close={]}} 
+\usepackage[table,xcdraw]{xcolor}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{graphicx}
+\DeclareCaptionLabelFormat{bold}{\textbf{#1 #2}}
+\captionsetup{labelformat=bold}
+\usepackage{lineno}
+\usepackage{authblk}
+
+\pagestyle{plain} 
+\newcommand{\upcite}[1]{\textsuperscript{\textsuperscript{\cite{#1}}}}
+
+\title{A Population Coupling Model Identifies Reduced Propagation from V1 to Higher Visual Areas During Locomotion}
+
+\author[1,2]{Qi Xin}
+\author[1,2]{Konrad N. Urban}
+\author[4]{Joshua H. Siegle}
+\author[1,2,3]{Robert E. Kass}
+
+\affil[1]{\small Department of Statistics \& Data Science, Carnegie Mellon University, Pittsburgh, Pennsylvania}
+\affil[2]{Neuroscience Institute, Carnegie Mellon University, Pittsburgh, Pennsylvania}
+\affil[3]{Machine Learning Department, Carnegie Mellon University, Pittsburgh, Pennsylvania}
+\affil[4]{Allen Institute for Neural Dynamics, Seattle, Washington}
+
+\affil[ ]{\textit{Corresponding author: R. E. Kass,  kass@stat.cmu.edu}}
+
+\date{} % This removes the date
+
+%---------------------------------------------------------------------------------------------------------------------
+\begin{document}
+\linenumbers
+
+\maketitle
+
+%Abstract
+%\vspace{6\baselineskip}
+
+\newpage
+
+\section*{\centering{Abstract}}
+
+Point process generalized linear models (GLMs) have been a major tool for studying coordinated activity across populations of neurons. These models typically quantify how the spiking of a single neuron depends on the past activity of other neurons at multiple time lags, and the resulting neuron-to-neuron interactions are then aggregated to obtain population coupling effects. However, when neurons within the same population exhibit similar spiking patterns, explicitly modeling individual interactions can become redundant and unnecessarily increase model complexity. In such cases, population-level formulations may offer a more efficient alternative. For example, biophysical population models often characterize circuit dynamics using the average firing rate across neurons within a population, and recent data-driven approaches have similarly demonstrated the utility of population-level statistics for capturing cross-population interactions. Motivated by this consideration, we reformulate the GLM framework to operate directly at the population level. The resulting model, which we call pop-GLM, provides a computationally efficient method for estimating coupling between populations. In a simulated dataset, we show that pop-GLM achieves greater sensitivity in detecting coupling effects and can account for trial-to-trial variation in stimulus drive, which would otherwise introduce bias. We introduce a modification to the conventional GLM structure that is required to achieve the population-level formulation. We then apply pop-GLM to real data and identify decreased functional connectivity from primary visual area (V1) to a higher visual area during locomotion, a change not detected by single-neuron GLMs.
+
+\section*{\centering{Author summary}}
+
+A central goal of systems neuroscience is to understand how multiple populations of neurons, across different brain areas, interact as a coordinated circuit to produce perception and behavior. We formulated and investigated a new method of estimating functional interactions across two populations of spiking neurons and showed it can be more sensitive and robust than previous approaches. To illustrate, we discovered decreased interaction between two mouse visual areas during locomotion, noting that previous techniques could not detect this result. The method should aid investigators in searching for important functional relationships across populations of neurons, with precise time scale resolution.
+
+\section{Introduction}
+
+As simultaneous recording of neural activity across large numbers of neurons and brain regions becomes increasingly common \cite{jun2017fully, siegle2021survey, steinmetz2021neuropixels, machado2022multiregion}, interest has grown in modeling interactions at the population level to understand coordination across circuits \cite{kass2023identification, kang2020approaches, semedo2020statistical}. A widely used statistical approach for studying such interactions is the point process generalized linear model (GLM), which models how a single neuron’s spiking is influenced by the past activity of other neurons, typically across multiple time lags \cite{kass2023identification, keeley2020modeling}. To characterize interactions between populations, it is common to aggregate the resulting neuron-to-neuron couplings across populations \cite{yates2017functional, hart2020recurrent, zoltowski2018scaling, stevenson2008bayesian}.
+
+Neurons within the same neural population are often observed to exhibit highly similar spiking patterns, particularly in sensory and cortical areas. When this is the case, distinguishing between individual neurons is typically not the goal, since their firing tends to reflect a common underlying pattern; instead, the focus shifts to capturing interactions at the population level, which are more informative for understanding circuit computation. Moreover, modeling each neuron separately introduces substantial complexity: the number of coupling parameters grows quadratically with the number of neurons in the population, leading to noisy estimates that are difficult to interpret. Consistent with this perspective, population-level biophysical models have long focused on average firing rate within each population and have been successful in explaining various circuit-level phenomena \cite{gerstner2014neuronal, wilson1972excitatory, wilson1973mathematical, joglekar2018inter}. These models motivate a complementary statistical perspective: by defining populations as groups of neurons with similar spiking patterns, the most critical interactions may be better captured directly at the population level. Supporting this view, recent data-driven studies showed that the peak timing of population firing rate reveals strong temporal correlations and precise time lag estimates across populations \cite{chen2022population, olarinre2025relative}, suggesting that population-level statistics can meaningfully capture cross-population coupling.
+
+Motivated by these developments, we present a population-level GLM coupling model (pop-GLM) that directly estimates interactions between populations using population spike trains obtained by pooling spike trains across neurons. Although this approach sacrifices individual neuron identity and requires grouping neurons with similar firing patterns, pop-GLM avoids the need to estimate a large number of neuron-to-neuron couplings and is therefore more sensitive to detecting coupling effects. In addition, pooled spike trains contain richer information than individual spike trains and allow us to estimate and adjust for trial-to-trial variability arising from non-coupling sources, such as locomotion or attention. Beyond the methodological contribution, we apply pop-GLM to large-scale recordings from mouse visual cortex and find that locomotion is associated with decreased functional connectivity between visual areas. This observation complements existing findings of locomotion-induced modulation of firing rate and response variability \cite{niell2010modulation, keller2012sensorimotor, lecoq2014visualizing, andermann2011functional, ayaz2013locomotion, bennett2013subthreshold, polack2013cellular, fu2014VIP, vinck2015arousal, dadarlat2017locomotion, pillow2022reduced, glickfeld2017higher}, providing new population-level evidence about how behavioral state shapes inter-areal coupling in the visual system.
+
+
+% we demonstrate that pop-GLM can offer advantages over single-neuron GLM coupling models using both simulated and read datasets. 
+% Pop-GLM is more sensitive to detecting coupling effects, and better accounts for trial-to-trial variability in stimulus effects, thereby reducing potential bias. 
+% In addition, we found that applying standard GLM techniques to population spike trains, pooled across neurons, requires certain modifications. We then apply pop-GLM to assess how functional connectivity between visual areas is modulated by behavioral state, specifically by locomotion.
+
+% Various behaviors modulate neural activity across the brain, including in the sensory cortex \cite{international2023brain, musall2019single, stringer2019spontaneous, ringach2009spontaneous}. Locomotion is one of the most fundamental behaviors, and its impact on the sensory system has been extensively studied. Locomotion, typically taken to mean the animal is walking or running rather than stationary, has been shown to induce changes in the magnitude and consistency of neural responses to visual stimuli \cite{niell2010modulation, keller2012sensorimotor, lecoq2014visualizing, andermann2011functional, ayaz2013locomotion, bennett2013subthreshold, polack2013cellular, fu2014VIP, vinck2015arousal, dadarlat2017locomotion, pillow2022reduced, glickfeld2017higher}. Specifically, in mouse primary visual cortex, it has been reported that there is an increase in firing rates during running \cite{niell2010modulation, keller2012sensorimotor, lecoq2014visualizing, ayaz2013locomotion, bennett2013subthreshold, polack2013cellular, fu2014VIP, vinck2015arousal}, a decrease in response variability and noise correlations \cite{polack2013cellular, bennett2013subthreshold, vinck2015arousal}, and an improvement in the signal-to-noise ratio (SNR) \cite{bennett2013subthreshold, dadarlat2017locomotion}. In higher-order visual areas, locomotion has been found to elevate firing rates \cite{lecoq2014visualizing, andermann2011functional} and enhance the reliability of neural responses \cite{pillow2022reduced}. Despite these multiple findings involving the impact of locomotion on neural firing properties, effects of locomotion on the interactions among various visual areas remain unexplored. We show here that pop-GLM can identify decreased functional connectivity due to locomotion, even for a situation in which previously-developed individual-neuron methodology can not.
+
+
+\section{Population-level GLM coupling model (pop-GLM)}
+
+\subsection{Overview}
+Point process generalized linear models (GLMs) are widely used for spike train analysis \cite{kass2001spike, truccolo2005point, pillow2008spatio}. In these models, the timeline is segmented into sufficiently small time bins to ensure that at most one spike can occur in each bin, and the spike count in each bin is often considered to follow a Poisson distribution. The bin-specific probability of a spike occurring, also known as the instantaneous firing rate, is a latent variable that depends on stimuli, behavior, or past neuronal activity. This firing rate is fitted using generalized regression methods and basis functions, such as splines. By fitting the model, we not only obtain an estimate of the instantaneous firing rate but also can perform statistical inference on various influencing factors. For instance, a single-neuron GLM coupling model focuses on the coupling effects across neurons. In its usual form, it specifies that the log instantaneous firing rate is a summation of three components: (1) stimulus effects, either represented by a time-varying baseline or the convolution of a stimulus filter with the stimulus; (2) self-history effects, commonly represented by the convolution of a post-spike filter with the target neuron's spike train; and (3) coupling effects, typically represented by the convolution of one or more other source neurons' spike trains with coupling filters. Through this approach, we obtain an estimate of the functional coupling strength from source neurons to the target neuron while controlling for potential confounding effects such as stimulus and the target neuron's autoeffects, distinguishing GLM-based methods from pairwise analyses like canonical correlation analysis (CCA) and reduced rank regression (RRR)\cite{kass2023identification, semedo2019cortical}. 
+
+% Figure 1
+\begin{figure}
+{\includegraphics{Figures/0 model explanation.pdf}}
+\caption{Illustration of pop-GLM. \textbf{A}, Population spike trains are obtained by pooling spike trains from a group of individual neurons. \textbf{B}, Schematic diagram of the Population GLM Coupling Model. \textbf{C}, Comparison of model stability in simulation with and without the correction term $f_{\text{damp}}(\Lambda)$. After fitting the models with real data, we use the models to do simulations and generate artificial spike trains. On the left, excluding $f_{\text{damp}}(\Lambda)$ from Equation \ref{eq: model} leads to an unrealistic escalation in simulated firing rate, known as the ``explosion'' or instability issue. On the right, the introduction of the nonlinear correction term $f_{\text{damp}}(\Lambda)$ resolves this problem and improves the fit. \textbf{D}, Fitted nonlinear correction term $f_{\text{damp}}(\Lambda)$ of V1 under stationary conditions. This term becomes significantly negative as the empirical firing rate increases. Similar monotonically decreasing trends of $f_{\text{damp}}(\Lambda)$ are observed in all other areas' population and conditions, as shown in Supplementary Figure \ref{subfig: all six area f damp}. }
+\label{fig: model explanation}
+\end{figure}
+
+We extend this framework to the population level by modeling interactions between pooled population spike trains. In our population-level GLM coupling model (pop-GLM), the spike train for each population is constructed by pooling the spike times of multiple neurons within the same brain area that exhibit similar firing patterns (Figure~\ref{fig: model explanation}A). Neurons are grouped into populations using a pre-selection procedure based on firing pattern similarity, following the approach of \citet{chen2022population}; further details are provided in the Materials and Methods section. For each area, we retain only the population with the strongest stimulus tuning, resulting in a single population per area. As shown in Figure~\ref{fig: model explanation}B, pop-GLM directly estimates coupling filters between these population spike trains, bypassing the need to fit single-neuron couplings.
+
+In developing pop-GLM, we introduced two key modifications to the standard GLM formulation to better accommodate population spike trains. First, we explicitly account for trial-to-trial variations in the stimulus effects. This allows us to better account for common drivers and achieve more accurate modeling of population interactions. This trial-to-trial variation is not an automatic consequence of superposition; rather, pooling across neurons enables reliable estimation of trial-to-trial variations that would be difficult to recover from individual neurons alone without further assumptions. Second, we address a stability issue that arises when applying conventional GLM self-history terms to population spike trains. Initial attempts to fit population-level GLMs using standard linear self-history filters resulted in unstable simulations, where predicted firing rates escalated unrealistically (Figure~\ref{fig: model explanation}C, left). While instability in single-neuron GLMs has been studied and addressed in prior work \cite{chen2019stability, hocker2017multistep, gerhard2017stability, park2013spectral, arribas2020rescuing}, these solutions do not apply to population spike trains. We found that pooling spike trains suppresses individual refractoriness, making linear history filters insufficient to stabilize the model. To address this, we introduce a nonlinear correction term, $f_{\text{damp}}(\Lambda)$, which depends on the instantaneous firing rate and acts as a regularizing feedback term (Figure~\ref{fig: model explanation}C, right and \ref{fig: model explanation}D). This correction consistently prevents runaway dynamics and improves simulation fidelity. Detailed descriptions for the two modifications will be provided in Section \ref{sec:Modeling trial-to-trial variation in stimulus effects} and \ref{sec:Nonlinear self-history effects}.
+
+In schematic form, the resulting pop-GLM can be expressed as:
+\begin{align*}
+\log \text{firing rate} = \text{trial-specific baseline} + \text{self-history effects} + \text{coupling effects},
+\end{align*}
+where the ``coupling'' term captures effects from interactions with other neural populations, and the ``self-history'' component accounts for local intra-population dynamics.
+
+The trial-specific baseline is further decomposed as:
+\begin{align*}
+\text{trial-specific baseline} = \text{time-warped template} + \text{trial-specific gain},
+\end{align*}
+where the time-warped template accounts for shifts in peak response timing across trials, and the gain term captures modulation of overall response amplitude across trials.
+
+The self-history effects are modeled as:
+\begin{align*}
+\text{self-history effects} = \text{linear history effects} + \text{nonlinear correction},
+\end{align*}
+where ``linear history effects'' is defined as the convolution of the population spike train with a self-history filter, which mainly reflects interneuronal coupling within the population, given that each individual neuron contributes only a minor portion to the total spikes in the population spike trains. The ``nonlinear correction'' term is more closely related to the refractory effects of each individual neuron. 
+
+
+\subsection{Modeling trial-to-trial variation in stimulus effects}
+\label{sec:Modeling trial-to-trial variation in stimulus effects}
+
+The stimulus-related term, often referred to as the inhomogeneous firing rate baseline and modeled as a function of time since stimulus onset, is typically assumed to be consistent across repeated trials. However, endogenous states such as arousal or attention, as well as behaviors like locomotion, can modulate this baseline, leading to substantial trial-to-trial variability \cite{international2023brain, musall2019single, stringer2019spontaneous, williams2021statistical, cowley2020slow}. In the Allen Brain Observatory - Neuropixels Visual Coding dataset \cite{allendata}, the neural response to a drifting grating stimulus typically exhibits two peaks (Figure~\ref{fig: mean firing rate}). Notably, the timing of these peaks, particularly the second one, varies considerably across trials \cite{chen2022population, olarinre2025relative}.
+
+In fact, the width of the peaks in the PSTH (Figure~\ref{fig: mean firing rate}) largely reflects trial-to-trial variability in peak timing. This is evident after applying time warping to shift peak times across trials, which results in a firing rate template that is much narrower than the original PSTH and provides a better fit to the data (Supplementary Figure~\ref{subfig: inhomo only}). Given these significant variations in neural response, it raises questions about the validity of assuming identical firing rate baseline across all trials. Furthermore, our analysis of a synthetic dataset (Section~\ref{sec:Results with synthetic dataset}) indicates that ignoring trial-to-trial variation in the baseline term can lead to biased estimates of coupling between populations. This bias arises when shared variability in stimulus input acts as a confounding factor; if not properly accounted for, such variability may be misattributed to inter-population coupling. Therefore, it is important to incorporate trial-to-trial variation in the baseline term within the model.
+
+Estimating a unique baseline function for each trial without any constraints is impractical, as it would make the term overly flexible and lead to non-identifiability issues. To effectively capture the most prominent trial-to-trial variability, we instead apply time warping to a baseline function template and introduce a gain constant for each trial. This yields a distinct, yet constrained, baseline function per trial. Time warping accounts for variability in the timing of neural responses, while the gain constant captures differences in overall firing rate, potentially driven by factors such as arousal, engagement, or locomotion \cite{niell2010modulation, vinck2015arousal, yin2023engaged}. This strategy balances flexibility and identifiability, enabling the model to capture essential trial-to-trial variation without causing non-identifiability.
+
+To capture trial-specific shifts in stimulus responses, we apply a piecewise-linear time warping function $\phi_{j,m}: [0, T] \rightarrow [0, T]$ to the baseline template $f_j(t)$, where $T$ is the trial duration. This produces a time-warped trial-specific baseline function $f_j(\phi^{-1}_{j,m}(t))$ for population $j$ on trial $m$. The time warping function is defined using key landmarks that align the two peaks of the average response template to their trial-specific timing (see Section \ref{sec:Time warping function} for details), allowing the model to flexibly accommodate variability in response timing across trials. Additionally, we introduce a trial-specific gain parameter $\beta_{j,m}$ for population $j$ on trial $m$ to capture differences in overall response magnitude across trials.
+
+\subsection{Nonlinear self-history effects}
+\label{sec:Nonlinear self-history effects}
+
+In our model, self-history effects are included to capture the influence of recent spiking activity within a population. However, when these effects are modeled solely with a linear convolution term, the fitted model becomes unstable when using them to generate spike trains, resulting in a rapid and unrealistic escalation in firing rate (Figure~\ref{fig: model explanation}C). This phenomenon, commonly known as the ``explosion'' problem in GLMs, has been extensively studied in single-neuron settings, where various causes and remedies have been proposed \citep{chen2019stability}. However, in the population-level scenario addressed here, the solutions applicable to single-neuron GLMs fail to resolve this problem.
+
+We found that the pooling procedure is sufficient to cause the explosion issue. From a neurophysiological standpoint, the refractory period sets a limitation for firing rate of neurons. When modeling the firing rate of single neurons with GLMs, we often observe a pronounced negative dip at the beginning of the self-history filter. This dip reflects the strong refractory effects. Consequently, the firing rate drops to almost zero immediately after a previous spike. However, when modeling the population firing rate, with self-history effects assumed to be linear, the extent of refractory effects is greatly underestimated or even disappears. We support this point by both analytical and empirical results in the Supplementary Materials. Consequently, the system lacks a ``brake'' to counteract positive feedback loops, which can drive the system to a firing rate that is unrealistic, as illustrated in the Supplementary Figure \ref{subfig: explain nonlinear correction}.
+
+To approximate refractory effects that are not captured by the linear self-history term, we introduce a nonlinear correction term $f_{\text{damp}}(\Lambda)$, where $\Lambda(t) = \frac{1}{\tau} \sum_{k=1}^\infty \exp(-(t - t_k^*) / \tau)$ represents a smoothed count of recent spikes within an exponential window. Here, $t_k^*$ denotes the time of the $k$-th most recent spike before time $t$, and the hyperparameter $\tau$ controls the width of the temporal window. The function $f_{\text{damp}}$ is flexibly parameterized using splines and is consistently negative, as shown in Figure~\ref{fig: model explanation}D. This provides dynamic negative feedback when excessive spiking occurs in a short time interval. The correction term not only stabilizes the model by preventing runaway firing rates, but also improves the fit. We tested alternative forms of nonlinearity in the self-history component, but found that $f_{\text{damp}}(\Lambda)$ yielded the best overall performance (Table~\ref{table: coupling}).
+
+One potential concern is that the nonlinear correction term may not fully capture the true history effects, potentially introducing bias into the estimated coupling filters. To assess this, we re-estimated the coupling filters using exact self-history terms from individual neurons, replacing the correction term $f_{\text{damp}}(\Lambda)$. As shown in Figure~\ref{subfig: use exact history}, the resulting coupling filters remain largely unchanged, This underscores the efficacy and relative simplicity of the correction term as an effective approximation.
+
+\subsection{Pop-GLM equations}
+
+We formally define our population-level GLM (pop-GLM) in Equation~\ref{eq: model}, which models the log firing rate of a population spike train:
+
+\begin{align}
+\begin{split}
+\log \lambda_{j, m} (t \mid H_t) = \ &f_j (\phi^{-1}_{j, m} (t)) + \beta_{j, m} + (g_{j \rightarrow j} * Y_{j, m})(t) + f_{\text{damp}}(\Lambda(t)) \\
+&+ \sum_{i \neq j} (g_{i \rightarrow j} * Y_{i, m})(t),
+\end{split}
+\label{eq: model}
+\end{align}
+where $\lambda_{j, m}(t \mid H_t)$ denotes the instantaneous firing rate of the population spike train for population $j$ at time $t$ on trial $m$, conditioned on the spike history $H_t$. The term $f_j(t)$ is the inhomogeneous baseline template for population $j$. The trial-specific time warping function $\phi_{j, m}(t)$ shifts the timing of the two peaks in $f_j(t)$ for trial $m$, and the gain constant $\beta_{j, m}$ scales the overall response magnitude for trial $m$. Together, $f_j(\phi^{-1}_{j, m}(t)) + \beta_{j, m}$ defines the trial-specific inhomogeneous baseline for population $j$.
+
+The term $Y_{j, m}$ denotes the population spike train in area $j$ on trial $m$. The self-history filter $g_{j \rightarrow j}$ captures internal temporal dependencies within population $j$, while $g_{i \rightarrow j}$ represents coupling from source population $i$ to target population $j$. The nonlinear correction term $f_{\text{damp}}(\Lambda(t))$ modifies the self-history effects, where $\Lambda(t) = \frac{1}{\tau}\sum_{k=1}^\infty \exp(-(t - t_k^*)/\tau)$ captures recent spike activity through an exponentially weighted sum over past spike times $\{t_k^*\}$. This term helps to account for refractory effects and prevents unrealistic escalation of firing rates during simulations.
+
+Each component of the model is parameterized using basis functions to enable flexible and interpretable estimation. The baseline template $f_j(t)$ is modeled using a B-spline basis. The coupling filters $g_{i \rightarrow j}(t)$, the self-history filter $g_{j \rightarrow j}(t)$, and the nonlinear correction term $f_{\text{damp}}$ are parameterized using a set of raised cosine basis functions as in \citet{pillow2008spatio}. All basis coefficients are estimated via maximum likelihood. The time warping functions are fitted greedily in alternation with these regression coefficients as part of the optimization procedure.
+
+The central focus of our model, the cross-population coupling filter \( g_{i \rightarrow j}(t) \), remains interpretable as in single-neuron GLMs: it represents the change in the log firing rate of the population spike train for population \( j \) following a spike in population \( i \) with a time lag of \( t \). Since the log firing rate of a population spike train differs from that of the mean single-neuron firing rate by a constant equal to the logarithm of the number of neurons, this filter can also be interpreted as the effect on the mean firing rate of individual neurons in population \( j \).
+
+\section{Results}
+
+\subsection{Results with synthetic dataset}
+\label{sec:Results with synthetic dataset}
+
+\paragraph{Simulation setup} 
+Because the ground truth is unavailable in real data, we began by evaluating our population-level GLM coupling model (pop-GLM) on synthetic datasets, comparing it against existing single-neuron GLMs \citep{yates2017functional, hart2020recurrent} and reduced-rank regression (RRR) \citep{semedo2019cortical}. While RRR does not capture conditional dependencies like the GLM-based methods, we include it for completeness. We simulated spike trains using exponential integrate-and-fire (EIF) neurons \citep{gerstner2014neuronal, huang2019circuit, fourcaud2003spike} to construct a source and a target neural population, designed to mimic the V1 and LM activity observed in our real data. The model includes mutual excitation within each population using synaptic weights drawn from a log-normal distribution \citep{song2005highly}. Simulation details are provided in the Materials and Methods.
+
+\paragraph{Scenario 1: Detecting weak coupling}
+We consider two scenarios. The first tests the sensitivity of each method in detecting weak coupling from the source to the target population. Both populations receive trial-invariant input, with weak synaptic connections from source to target drawn from a log-normal distribution (Figure~\ref{fig: setting}A). Figures \ref{fig: synthetic dataset1}A show the estimated coupling filters when we fit pop-GLM and single-neuron GLMs to the simulated spike trains. It is evident that while the coupling filter estimated by single-neuron GLMs shares the same expectation, it exhibits significantly higher variance than those fitted by pop-GLM. This discrepancy arises because single-neuron GLMs involve a greater number of parameters (scaling quadratically with the number of neurons in a population), thereby increasing model variance. We then conducted a likelihood ratio test on the three models to test the null hypothesis of no coupling between the two populations. With 100 trials, approximately the number in the real dataset, pop-GLM demonstrates greater sensitivity in detecting coupling, shown by its significantly higher area under the curve (AUC) (Figure \ref{fig: synthetic dataset1}B). For other trial counts, as the number of trials increases, all three methods yielded smaller $p$-values against the null hypothesis (Figure \ref{fig: synthetic dataset1}D) and exhibit higher statistical power (Figure \ref{fig: synthetic dataset1}C). Among the three methods, pop-GLM is the most sensitive, requiring only about 100 trials to achieve a statistical power of 0.8 (rejecting the null hypothesis 80\% of the time) at a significance level of 0.05, whereas the single-neuron GLM needs approximately 250 trials. Reduced rank regression, which neither takes advantage of Poisson likelihood nor can use smaller time bins (requiring a 50 ms bin and thus limiting its effective sample size), performed worst and requires more than 800 trials to reach a power of 0.8.
+
+We also explored a wide range of hyperparameters, including the number of neurons in a population, mean synaptic weights, and variance of synaptic weights, and found that the results remain consistent. Notably, when the number of neurons in each population increases, or when we increased the variance of synaptic weights, pop-GLM demonstrated an even greater advantage over single-neuron GLMs. This occurs because increasing the number of neurons leads to a quadratic increase in the number of parameters in single-neuron GLMs, making the fitted coupling filters noisier and thereby reducing statistical power. Similarly, higher variance in synaptic weights also leads to noisier fitted coupling filters, diminishing the statistical power of single-neuron GLMs.
+
+\paragraph{Scenario 2: Avoiding false positives under correlated inputs}
+In the second scenario, there is no ground truth coupling between the populations. However, the input stimulus exhibits trial-to-trial temporal shifts, creating the potential for spurious coupling due to shared variability (Figure~\ref{fig: setting}B). We configured the stimulus input to mimic the activity in V1 and LM as observed in the real dataset, where the two peaks are temporally shifted on a trial-by-trial basis (Figure \ref{fig: synthetic dataset1}A). The correlation between the peak times of the source and target populations also aligns with the real data correction (\citep{chen2022population} Figure 1 B and C). This highly correlated stimulus input can act as a confounder in the relationship between the two populations. This was observed in Figure \ref{fig: synthetic dataset2}B and C, where, without accounting for the trial-to-trial variation in stimulus input, both the population-level model and the single-neuron model yield very small $p$-values, leading to the false rejection of the null hypothesis. However, the population spike trains contain sufficient information to estimate these shifts using time warping. As a result, our pop-GLM with time-warping equipped consistently does not reject the null hypothesis. In contrast, single-neuron GLMs lack enough information per neuron to estimate per-trial variability, making some form of neuron pooling effectively necessary. This highlights that modeling trial-level stimulus variability is inherently a population-level problem.
+
+\paragraph{Summary}
+The synthetic data results highlight two key advantages of pop-GLM. First, when weak coupling is present, pop-GLM detects connectivity with greater sensitivity and requires fewer trials than competing methods. Second, when correlated trial-to-trial variability exists in the inputs to both populations, modeling baseline shifts through time-warped templates, made possible by pooling across neurons, helps avoid false positives. Together, these results demonstrate that population-level modeling enhances statistical power and reduces bias caused by ignoring trial-to-trial variability in input structure.
+
+% Figure 3
+\begin{figure}[]
+    \centering
+    \includegraphics[width=4.5in]{Figures/0 setting.pdf}
+    \caption{Illustration of two scenarios in synthetic datasets. 
+    \textbf{A\&B}, The first scenario. 
+    \textbf{A}, We created two populations, a source population and a target population, each comprising ten exponential integrate-and-fire (EIF) neurons. The external inputs to both populations, which are the same for each trial, are depicted in panel A. Each neuron within a population receives identical input, designed to mimic the firing rates of V1 and LM under stationary conditions (see Figure \ref{fig: mean firing rate}). Additionally, there are very weak synaptic inputs from each neuron in the source population to each neuron in the target population, with the same synaptic weights for each neuron pair. 
+    \textbf{B}, Spike trains of an example neuron in the source and target population in the first scenario. 
+    \textbf{C\&D}, The second scenario. 
+    \textbf{C}, The same two populations as in A, but with NO coupling between them. Both populations receive inputs with trial-to-trial variations, featuring two peaks that shift across trials. 
+    \textbf{D}, Spike trains of an example neuron from both the source and target populations in the second scenario. 
+    }
+    \label{fig: setting}
+\end{figure}
+
+
+% Figure 4
+\begin{figure}[]
+\includegraphics[width=5in]{Figures/0 result dataset1.pdf}
+\caption{The population-level model requires a much smaller sample size compared to the single-neuron-level model to achieve the same level of sensitivity in detecting cross-population interactions.
+\textbf{A}, Coupling filter fitted by pop-GLM (upper) and single-neuron-level GLMs (lower). The gray curves show the fitted coupling filters across ten repetitions. Filters fitted by single-neuron-level GLMs exhibit significantly higher variability. 
+\textbf{B}, The Receiver Operating Characteristic (ROC) curve demonstrates the superior ability of pop-GLM (red) in detecting coupling effects from the source to the target population, compared to single-neuron GLMs (yellow) and reduced rank regession (blue). For pop-GLM, the likelihood ratio test is conducted by fitting a nested model, where the coupling filter from the source to the target population is assumed to be zero, and a full model with no constraints. For the single-neuron-level model, the same likelihood ratio tests are performed for each neuron, and Fisher's method is used to aggregate these $p$-values into a final $p$-value. For reduced rank regression, a permutation test is conducted by shuffling the source population spike trains across trials, using mean squared error as the test statistic.
+\textbf{C}, The averaged $p$-values (blue) and statistical power (red) for pop-GLM (solid lines) and single-neuron-level GLM (dashed lines) were compared across varying numbers of trials (25, 50, 100, 200, 400, 800), with statistical power measured at a significance level of 0.05. For each trial setting, two hundred repetitions were conducted. Pop-GLM consistently reports lower $p$-values and achieves higher statistical power.
+}
+\label{fig: synthetic dataset1}
+\end{figure}
+
+% Figure 5
+\begin{figure}[]
+\includegraphics[width=5in]{Figures/0 result dataset2.pdf}
+\caption{The population-level model with a time-warping component to account for trial-to-trial variation effectively avoids false discoveries in cross-population interactions influenced by highly-correlated backgrounds. 
+\textbf{A}, The timing of peak-1 (upper) and peak-2 (lower) in both populations. Peak-1 times show a correlation of 0.5, and peak-2 times, a correlation of 0.9, consistent with V1 and LM results from real data. Their standard deviations and means also match those found in real data.
+\textbf{B}, Inference was conducted similarly to Figure \ref{fig: synthetic dataset1}, but in this case, there is no ground truth connection between the two populations. Without time-warping component, single-neuron models (yellow dots), reduced rank regression (blue diamonds), and population-level models (red squares) would mistakenly detect coupling between the populations with very small $p$-values. Pop-GLM equiped with time-warping (red dots) remains robust against false positives in this scenario.
+\textbf{C}, An increase in the standard deviation of peak times causes models without time-warping (single-neuron models: gray solid; population-level models: black dashed) to report increasingly significant false positive results. In contrast, pop-GLM (black solid) continues to demonstrate robustness. On the x-axis, a 0\% value indicates no variation, while 100\% reflects the variation matching that of the real data.}
+\label{fig: synthetic dataset2}
+\end{figure}
+
+
+\subsection{Results with experimental data}
+
+\paragraph{Stimulus response in six visual areas}
+
+Before presenting the fitted results of pop-GLM, we first show the average evoked responses to full-field drifting grating stimuli across six visual areas (V1, LM, AL, RL, AM, and PM). The stimulus is presented at time 0, and neural responses typically exhibit two peaks around 60 ms and 250 ms. This dual-peaked sensory response has been previously reported in early visual areas \citep{yang2019exploring, super2001two, del2007brain}. The first peak is thought to reflect feedforward propagation of sensory input, while the second peak is modulated by top-down feedback and has been associated with perceptual processing \citep{chen2022population, super2001two, del2007brain}. We designed our synthetic dataset to closely mimic this dual-peaked neural activity in the real dataset, and our hand-designed trial-to-trial variation with time-warping is also designed to capture the most important aspect of the dual-peaked response.
+
+Although two peaks are visible in all six areas under both conditions, the firing patterns are markedly different between running and stationary conditions (Figure \ref{fig: mean firing rate}). The overall firing rate is higher when the mouse is running, consistent with previous findings \cite{niell2010modulation, keller2012sensorimotor, lecoq2014visualizing, ayaz2013locomotion, bennett2013subthreshold, polack2013cellular, fu2014VIP, vinck2015arousal}. Furthermore, the second peak in the running condition is notably less prominent than that in the stationary conditions. This observation leads us to the central question of our study: does cross-area coupling also change with these behaviorally modulated firing dynamics?
+
+% Figure 2
+\begin{figure}[]
+\includegraphics{Figures/0 mean firing rate.pdf}
+\caption{Neural population response to the first 350 ms of a full-field drifting grating stimulus. The stimulus begins at 0ms. The mean firing rates of six populations in six visual areas, under running and stationary conditions, are fitted using smoothing splines with second derivative penalties. The first peak occurs around 60 ms, followed by a second peak around 250 ms. When the mouse is running, the overall firing rate is higher, whereas the second peak is more prominent in the stationary condition. The drifting grating stimulus begins at 0 ms. There are a total of 129 and 81 trials for stationary and running conditions, respectively, across 14 stimulus conditions.}
+\label{fig: mean firing rate}
+\end{figure}
+
+\paragraph{Fitted coupling filters}
+We fitted pop-GLM to both running and stationary trials separately and used permutation tests to find differences in coupling filters between the two conditions. Figure \ref{fig: fitted filters} shows all coupling filters from one area to another, along with the corresponding baseline firing rate templates. After correcting for multiple comparisons, we found that the excitatory coupling filter from V1 to LM was significantly attenuated during locomotion ($p=0.0014$ after Bonferroni correction; $p=0.0011$ with a more precise correction procedure described in the Supplementary Materials). A spike in V1 is associated with 0.05 additional spikes in LM, conditioning on all other terms in the model, when the mouse is stationary, but this drops to 0.04 during running. Coupling from RL to AM and from V1 to other higher-order areas such as AL and RL also appears reduced during locomotion, though their $p$-values did not reach significance after correction.
+
+To further validate our findings, we replicated the model fitting and inference process with a second mouse, without changing any hyperparameters. Again, we observed significant attenuation of V1-to-LM coupling during running (Figure~\ref{subfig: second mouse}). Since we tested only this connection in the second mouse, no multiple comparisons correction was required.
+
+\paragraph{Similar findings using LFP data}
+Local field potential (LFP) and spiking data, both signals from extracellular recordings, differ substantially in their physiological origins. While spiking data specifically reflects the firing activity of individual neurons close to the electrode, LFPs primarily capture the collective synaptic activities of a large number of neurons in proximity to an electrode. Analyzing the LFP data also revealed two notable peaks, closely matching the timing of two firing rate peaks in the spike trains (Figure \ref{subfig: lfp}A). We applied Granger causality to assess functional connectivity in LFP data, and observed a reduced connection from V1 to LM during locomotion (Figure \ref{subfig: lfp}B). We replicated this LFP analysis with the second mouse, and the results were consistent.
+
+\paragraph{Failure of single-neuron GLMs}
+
+To directly compare against pop-GLM, we applied single-neuron GLM to the same dataset. The fitted coupling filters and coupling outputs are shown in Figures~\ref{subfig: huk filters} and~\ref{subfig: huk outputs}. However, the single-neuron GLMs yielded implausible results, most notably a pervasive inhibitory influence from V1 onto all other areas. The inhibition sent from V1 was markedly strong, except when V1 was in the period preceding stimulus onset and in the firing rate dip between the two peaks. These two periods of reduced activity in V1 actually correspond to the two firing rate peaks in other areas, considering an approximate 40 ms delay in the inhibition effects. In this way, the model essentially learns a baseline function with trial-to-trial variability and fits the data better. However, this pattern of consistently strong inhibition is more likely an artifact, potentially stemming from the model's inability to account for trial-to-trial variability in the stimulus effect. These results underscore the limitations of single-neuron GLMs and highlight the importance of modeling trial-level population dynamics, as done in pop-GLM.
+
+
+% Figure 6
+\begin{figure}[]
+{\includegraphics{Figures/0 fitted filters.pdf}}
+\caption{Fitted GLM coupling filters and inhomogeneous baseline firing rate templates (95\% CI). Red: running. Blue: resting. The smaller figure in the upper right of each panel displays the results of excursion tests, where the blue distribution represents the excursion test statistic distribution under the null hypothesis, and the red line indicates the observed statistic. The raw $p$-values are also shown in the figure. Yellow areas highlight regions of interest from excursion tests with $p$-values below 0.05, prior to correcting for multiple comparisons. The six panels of each row depict different components of a GLM model. For example, the panels in the first row, from left to right, present the inhomogeneous baseline for V1, the coupling filter from LM to V1, the coupling filter from AL to V1, the coupling filter from RL to V1, the coupling filter from AM to V1, and the coupling filter from PM to V1, respectively. Since we have a gain constant for each trial, the effects of different numbers of neurons in each area are mitigated, and coupling filters are normalized to spikes per second per neuron scale. }
+\label{fig: fitted filters}
+\end{figure}
+
+\paragraph{Suggested dynamics of the fitted model}
+
+Connections between generalized linear models (GLMs) and mechanistic models, such as the leaky integrate-and-fire (LIF) model, are established \citep{kass2018computational, gerstner2014neuronal}. In particular, the log firing rate in a GLM can be qualitatively interpreted as a proxy for membrane potential in an LIF model, and the fitted components of GLMs can reflect underlying currents or voltage changes.
+
+Viewed through this lens, our fitted GLM exhibits dynamics consistent with a simple dynamical model. Figure \ref{fig: trace} shows the average contribution of each component in our fitted model on LM. The self-history effect of LM itself acts as a strong driver, in addition to the input from V1 after the initial stage of sensory processing. This result aligns with the assumption of strong recurrent excitation \cite{wang2002probabilistic, wang2008decision, joglekar2018inter}. 
+
+To further examine this interpretation, we simulated a recurrent population of ten EIF neurons driven by external input. The external input to the EIF neuron population was a rescaled sum of all fitted components of pop-GLM, except for the nonlinear self-history effect, which was replaced by recurrent connections between these neurons. This configuration of the EIF neuron population was able to generate a PSTH similar to those observed experimentally, with the self-excitation within the population strongly following external input (shown in panels B and C of Figure \ref{fig: trace}). These findings support the view that the fitted pop-GLM effectively captures dynamics consistent with those of a recurrently connected EIF population.
+
+
+% Figure 7
+\begin{figure}[]
+\includegraphics[]{Figures/0 trace.pdf}
+\caption{Strong recurrent excitation suggested by pop-GLM. \textbf{A}, Each component of LM intensity, averaged across trials, predicted by pop-GLM. The blue curve represents the input from V1. The orange curve represents the nonlinear self-history effect of LM itself, consisting of both the term $f_{\text{damp}}(\Lambda) $ and the output of the linear post-spike filter. The other four curves are the linear coupling effects from the rest four areas. The inputs from V1 and from LM itself are the two biggest drivers. \textbf{B}, Trial-averaged current to ten EIF neurons mimicking the LM population. For each trial, the external input (blue) is the sum of all inputs predicted by the GLM, except those from LM itself. There are also recurrent connections within the ten-neuron population, and the orange line shows the trial-averaged input from other neurons within the population. \textbf{C}, The EIF neuron population generated spike trains with firing rates similar to those observed experimentally.}
+\label{fig: trace}
+\end{figure}
+
+\section{Discussion}
+
+Because recent work obtained interesting results by focusing on small populations of neurons that exhibited homogeneous responses to a specific stimulus \cite{chen2022population, olarinre2025relative}, we adopted a population firing rate perspective in the spirit of \citet{chen2022population} , and developed a population point process model. We explored the utility of point process GLM coupling models at the population level and, using synthetic data from recurrent EIF models, we found that these population models can be more sensitive in detecting coupling across areas than aggregating effects from individual neuron models. Population-level models also allowed us to consider more easily the trial-to-trial variation in response to a stimulus, which appears to be a major reason pop-GLM produced more intuitive results than an aggregated individual-neuron procedure when applied to the visual cortex spiking data we analyzed.
+
+Using our pop-GLM method on experimental data, we observed in two mice that functional connectivity from V1 to LM is weakened during locomotion. Our analysis of LFPs also supported this finding. Previous work has demonstrated that locomotion drives an overall increase in firing rates in visual areas, a finding which we replicate here. In light of the present work, it appears this increased activity level does not co-occur with increased coupling between V1 and higher visual areas. This suggests that firing rate increases do not result from more effective propagation of spikes from the periphery (mediated by V1), but rather from a modulation of overall activity levels by a shared input. Whether this originates from motor feedback (e.g., efference copy), neuromodulatory signals, or some other source is currently unclear.
+
+We also wish to address several limitations of our work. (1) Although we used a second mouse to check the consistency of our results, examining additional subjects and quantifying the degree of subject-to-subject variation in V1 to LM functional connectivity could yield more definitive conclusions. (2) Additionally, exploring how coupling changes in response to different types of visual stimuli, as well as to variables correlated with global states such as arousal, would provide further insights. (3) Nonlinear spike-history effects effectively prevent instability and improve the fit; however, our nonlinear correction term was somewhat {\em ad hoc}, challenging to interpret, and could potentially be improved. (4) Similarly, while our time-warping component works well for this dual-peaked response dataset, it was hand-designed for this specific context and may not generalize to other datasets. Developing an automated approach for modeling various forms of trial-to-trial variation would be beneficial. (5) Our method also relies on the assumption that neurons within a population exhibit similar firing patterns, requiring preprocessing to group neurons accordingly. A model capable of handling this step more flexibly would be a valuable improvement. (6) Lastly, we assumed that population coupling effects remain constant within the time interval analyzed for each trial, though the temporal evolution of functional connectivity deserves further investigation.
+
+We would like to highlight a final point, one which has been discussed extensively, especially under the general headings of replication and ``p-hacking" \cite{NAS2019,stefan2023}, yet often gets little attention within individual articles. In our reported results here, correction for multiple comparisons was straightforward (though we used a permutation procedure to check the Bonferroni correction, as it can be conservative). More worrisome are the many preliminary steps that precede formal analysis because they involve pre-processing and feature definition, which are not accounted for when computing assessments such as $p$-values. In analyzing locomotion, an obvious consideration is the definition of ``running". If the way we defined running somehow were to depend on the coupling effects we ended up examining (for example, in an extreme case, if we were to choose a definition that provided improved results), then, obviously, the computed $p$-value would lose its meaning. The models considered in choosing our definition, however, did not include the key variables of interest, namely the coupling terms. Furthermore, to guard against other, unknown potential sources of inferential corruption we replicated the results on a second mouse, repeating neither the relevant pre-processing steps nor the fitting of hyperparameter values. Although when replicating a finding in this way it remains possible that some source of bias was also replicated, the other common concerns are greatly mitigated.
+
+
+\section{Materials and methods}
+
+\subsection{Time warping function}
+\label{sec:Time warping function}
+
+To account for trial-to-trial variability in response timing, we apply a piecewise-linear time warping function $\phi_{j,m}(t): [0, T] \rightarrow [0, T]$ to the stimulus template $f_j(t)$, where \( T = 500 \, \text{ms} \) is the trial duration. The warped input function is then given by \( f_j(\phi^{-1}_{j,m}(t)) \), which shifts input peaks on a per-trial basis.
+
+The warping function $\phi_{j,m}$ is defined by a set of fixed and data-driven landmark pairs: $(0, 0)$, $(t_{j}^{\text{peak-1}}, t_{j,m}^{\text{peak-1}})$, $(150, 150)$, $(t_{j}^{\text{peak-2}}, t_{j,m}^{\text{peak-2}})$, $(350, 350)$, and $(500, 500)$. Here, $t_{j}^{\text{peak-1}} = \arg\max_{0 \leq t \leq 150} f_j(t)$ and $t_{j}^{\text{peak-2}} = \arg\max_{150 \leq t \leq 350} f_j(t)$ are the first and second peak locations in the template $f_j(t)$, while $t_{j,m}^{\text{peak-1}}$ and $t_{j,m}^{\text{peak-2}}$ are their trial-specific location after shifting.
+
+This procedure shifts the peaks of the template $f_j(t)$, resulting in the time-warped input function $f_j(\phi^{-1}_{j,m}(t))$. To further model variability in response magnitude across trials, we include a trial-specific gain term $\beta_{j,m}$ for population $j$ in trial $m$.
+
+
+\subsection{Synthetic dataset simulation}
+
+We used exponential integration-and-fire (EIF) neurons \cite{fourcaud2003spike, gerstner2014neuronal, huang2019circuit} to generate the synthetic dataset. Unlike the simpler leaky integrate-and-fire (LIF) model, the EIF model accurately represents the exponential increase in membrane potential near the firing threshold and is considered to have superior capability in mimicking real neuronal dynamics \cite{fourcaud2003spike}. The spiking neural network we created in our synthetic dataset consists of two neural populations, the source and the target, each comprising ten neurons. The dynamics of the neuron membrane potential is described by the following equation:
+
+\begin{align}
+C_m \frac{dV_j}{dt} = -g_L (V_j - E_L) + g_L \Delta_T e^{(V_j - V_T)/\Delta_T} + I^{\text{syn}}_j (t) + I^{\text{noise}}_j (t) + I^{\text{ext}}_j (t).
+\end{align}
+
+When the membrane potential $V_j(t)$ reaches a threshold $V_{\text{th}}$, the neuron produces a spike. Subsequently, the membrane potential is held for a refractory period $\tau_{\text{ref}}$ and then resets to a fixed value $V_{\text{re}}$. We use the same parameters as those in \citet{huang2019circuit}: $\tau_m=C_m/g_L=15\text{ms}$, $E_L=-60\text{mV}$, $V_T=-50\text{mV}$, $V_{\text{th}}=-10\text{mV}$, $\Delta_T=2\text{mV}$, $V_{re}=-65\text{mV}$, and $\tau_{\text{ref}}=1\text{ms}$. 
+$I^{\text{syn}}_j(t)$, $I^{\text{noise}}_j (t)$ and $I^{\text{ext}}_j (t)$ represent synaptic input from other neurons, random input, and the external stimulus. $I^{\text{noise}}_j (t)$ is assumed to be Gaussian white noise. We selected a noise amplitude that makes neurons fire at a 10Hz baseline in the absence of any external stimuli or synaptic inputs. $I^{\text{syn}}_j(t)$ is described by
+
+\begin{align}
+\frac{I^{\text{syn}}_j (t)}{C_m} = \sum_{k=1}^N J_{j,i} \sum_k \eta (t-t_k^i),
+\end{align}
+where $J_{j,i}$ is the synaptic weight from the i-th neuron to the j-th neuron, and $t_k^i$ represents the time of the i-th neuron's k-th past spike. $\eta$ is the unit postsynaptic current, which is given by
+\begin{align}
+\eta(t) = \frac{1}{\tau_d-\tau_r} \left\{
+\begin{array}{ll}
+e^{-t/\tau_d} - e^{-t/\tau_r}, & t\geq 0,\\ 
+0, & t<0,
+\end{array}
+\right.
+\end{align}
+where we use $\tau_d=5\text{ms}$ and $\tau_r=1\text{ms}$. 
+
+We designed two scenarios to evaluate the performance of our pop-GLM in comparison to the traditional single-neuron GLM. 
+In the first scenario, the external stimulus input $I^{\text{ext}}_j (t)$ is consistent across trials. Direct connections exist from the source population to the target population. The synaptic weight between each neuron in the source population and each neuron in the target population is random and follows a log normal distribution whose mean is $0.005$ and 95\% of the weights falls in $(0.0023, 0.0109)$ (underlying normal distribution has a mean of $-5.29$ and standard deviation of $0.4$). The self-excitation connections with in each population also follows this distribution. Given that this weight is relatively weak, detecting the connection with a limited number of trials poses a significant challenge for both methods. 
+
+In the second scenario, there is no connection between the source and target populations. Instead, the stimulus, which varies from trial to trial, influences both populations. Consequently, the stimulus acts as a confounder in determining the independence of the two populations. We utilized the same piecewise-linear time warping function previously described in the ``Modeling trial-to-trial variation in stimulus effects'' section to generate a unique stimulus function for each trial. This approach adjusts the peaks of these stimulus functions for both areas to new times, as shown in Figure \ref{fig: synthetic dataset2}C,D. The correlation between the adjusted peak times in the two areas is 0.5 for the first peak and 0.9 for the second peak, consistent with those observed in the experimental dataset (see the next section). Furthermore, the standard deviations of these shifted peak times are also similar to those observed in the real data.
+
+\subsection{Experimental dataset and preprocessing}
+\label{sec:Experimental dataset and preprocessing}
+
+We applied our methodology to the Allen Brain Observatory – Neuropixels Visual Coding dataset \cite{allendata}, which employs high-density extracellular electrophysiology probes, known as Neuropixels, to record spiking activity in various areas of the mouse brain. Recordings were simultaneously obtained from six visual areas using six probes. These areas included the primary visual cortex (V1) and five higher-order visual areas: the lateromedial area (LM), anterolateral area (AL), rostrolateral area (RL), anteromedial area (AM), and posteromedial area (PM). In the experiments, mice were head fixed and passively exposed to a range of visual stimuli including natural movies, flashes, Gabor filters, and drifting gratings. For comprehensive details of the experimental setup, please refer to \cite{siegle2021survey} and \cite{allendata}. Our study specifically focuses on drifting grating stimuli due to their large number of repeated trials, simplicity, and efficacy in eliciting neural responses. The drifting grating stimuli encompass 40 conditions, comprising combinations of 8 different orientations and 5 temporal frequencies. Each condition was presented 15 times in trials lasting 3 seconds, which included 2 seconds of stimulus exposure followed by 1 second of a gray screen, all arranged in a randomized sequence. For consistency and to minimize potential biases such as p-hacking \cite{stefan2023big, greenland2016statistical}, we selected the same two mouse sessions (757216464 and 798911424) and stimulus conditions as those used by \citet{chen2022population}. One session was used for model construction and hyperparameter tuning, while the other was used for validation. The results of both sessions are presented in the Results section. We applied the default spike sorting quality metric filters to the spike trains, which yielded the following neuron counts: In session 757216464, there were 85, 53, 53, 37, 64, and 60 neurons in V1, LM, AL, RL, AM, and PM, respectively. In session 798911424, the counts were 94, 78, 89, 47, 78, and 57. We used 14 and 18 different drifting grating conditions for the two sessions, respectively. The bin size for the spike trains was set at 1 ms. Given that we are analyzing population spike trains, the spike count in each bin is not limited to zero or one. Consequently, 6\% of the time bins contain two or more spikes, and 1.5\% of the bins contain three or more spikes. This volume of data highlights the computational efficiency of our approach. Because the single-neuron GLM scales quadratically with the number of neurons while pop-GLM maintains constant complexity (relative to population size), the fitting time is reduced from roughly 5 hours to approximately 3 minutes.
+
+To define a neuronal population, we may use all neurons within a visual area or selectively use those neurons that respond to a stimulus and exhibit similar firing patterns. As observed by \citet{chen2022population}, only a small proportion (20\%) of neurons demonstrate strong evoked responses to a stimulus, while the rest show weaker responses or maintain nearly constant firing rates throughout the stimulus periods. We applied the method of \citet{chen2022population} to select this subgroup of neurons in our study. Figures \ref{fig: mean firing rate} and \ref{subfig: use all mean firing rate} compare the mean firing rate per neuron in each area when including only the identified subpopulation and all available neurons. Although the overall shapes of the firing rate functions are largely unchanged, the amplitudes decrease to a quarter of their original values when all neurons are included. The inclusion of non-relevant neurons essentially introduces additional Poisson noise, lowering the per-neuron firing rate. This also dilutes the observed coupling strength in single-neuron analyses. Figure \ref{subfig: use all fitted filters} shows the fitted coupling filters with all neurons included, where the shapes are similar to those using just the subpopulation (Figure \ref{fig: fitted filters}), but the amplitudes are significantly reduced.
+
+
+\subsection{Distinguishing between running and stationary conditions}
+We performed model selection for the first mouse to determine the optimal incorporation of running speed effects into our model. Details are given in Table \ref{table: speed}, but note that the models did not include coupling effects (the variables of interest). We discovered that categorizing trials into ``running'' and ``stationary'' based on average speed was the most effective, which is typical in the literature \cite{niell2010modulation, keller2012sensorimotor, dadarlat2017locomotion, pillow2022reduced}. Specifically, a trial is labeled as ``running'' if the average speed exceeds 1 cm/s, while those with lower speeds are classified as ``stationary''. Adopting stricter criteria as in \citep{pillow2022reduced} to identify these type of trials resulted in similar outcomes, but with reduced sample sizes. Simplifying the speed effects into just two trial types also allows us to fit separate models only to two conditions, which makes both the fitting process and subsequent inference easier.
+
+
+\subsection{Excursion algorithm and permutation test}
+To quantify the discrepancy between two functions, which, in our study, are the coupling filters under stationary and running conditions, we used what has been called an ``excursion test'' \cite{xu2011characterizing}. This method effectively pinpoints regions where the differences between the two functions are most significant. The details of this procedure are outlined in Algorithm \ref{algorithm} and illustrated in Figure \ref{subfig: basis}D. Applying this algorithm to each pair of running and stationary filters yields the observed test statistics. This statistic represents a certain area between the two filters and can be interpreted as the logarithmic geometric mean of spike count increase in the target area per time unit per spike in the source area.
+
+To test the null hypothesis that the coupling filters are identical in both running and stationary trials, we perform a random permutation of the trial types. This permutation test enables us to establish a distribution of the excursion test statistics under the null hypothesis, which allows us to get the statistical significance of the differences observed. 
+
+
+\begin{algorithm}
+\caption{Excursion algorithm}
+\label{algorithm}
+\textbf{Input:} Two functions $ g_1(t) $ and $ g_2(t)$, representing the coupling filters \\
+\textbf{Output:} Excursion test statistic $E$ \\
+1. Compute the absolute difference between the two functions: $D(t)=\left| g_1(t)-g_2(t) \right|$.
+
+2. Identify the maximum difference: $\Delta_{max}=\max_s D(s)$.
+
+3. Determine the candidates of regions of interest (ROI): for each $t$ where $D(t) \geq \frac{1}{2} \Delta_{max}$, find the longest continuous interval containing $t$ such that for all $s$ in this interval, $D(s) \geq \frac{1}{2} \Delta_{max}$. Denote these intervals by $A_1, \cdots, A_N$ (yellow area in Figure \ref{subfig: basis}D).
+
+4. For each ROI candidate, calculate the integral of $D(t)$ within the ROI: $\int_{A_i} D(t)dt$ (shaded area in Figure \ref{subfig: basis}D).
+
+5. Determine the excursion statistic, $E_{\text{exc}}$, as the maximum of these integrals: $E_{\text{exc}} = \max_{i=1}^N \int_{A_i} D(t)dt$.
+ 
+\end{algorithm}
+
+
+
+
+\section*{Acknowledgments}
+Q.X., K.U. and R.K. were supported on grant RO1 MH064537. 
+ChatGPT was used by the first author to create an improved initial draft to show to the other authors, who subsequently read through it and edited it thoroughly.
+
+\section*{Data and Code Availability}
+
+The Python implementation of the population coupling model (pop-GLM), along with the code used for the simulation and analysis in this paper, is available on GitHub at \url{https://github.com/Qi-Xin/MultiNeuronGLM}. The Allen Brain Observatory – Neuropixels Visual Coding dataset used in this study is publicly available via the Allen Institute for Brain Science at \url{https://allensdk.readthedocs.io/en/latest/visual_coding_neuropixels.html}.
+
+\bibliography{ref}
+
+
+\newcommand{\beginsupplement}{%
+        \setcounter{table}{0}
+        \renewcommand{\thetable}{S\arabic{table}}%
+        \setcounter{figure}{0}
+        \renewcommand{\thefigure}{S\arabic{figure}}%
+     }
+\beginsupplement
+
+\newpage
+
+
+\section*{Supplementary materials}
+
+
+\subsection*{Lack of refractory effects in linear self-history filters of population spike trains}
+\label{Sec:lack_of_refractory}
+
+In this section, we show that the refractory effect, a transient period after a spike during which the neuron's likelihood to fire again is reduced, can become less pronounced at the population level after pooling individual spike trains. This discrepancy can have significant consequences when modeling with GLMs. Specifically, a population-level model may exhibit instability even if individual neurons are stable.
+
+Consider a population consisting of $N_A$ GLM neurons. Each neuron in the population only receives self-history effects from itself. For simplicity, we will assume that all neurons share an identical self-history filter $h$ and a constant baseline $\beta_0$. 
+
+For each neuron, its behavior can be described as:
+\begin{align}
+\log \lambda_i = h*Y_i + \beta_0,
+\end{align}
+where $\lambda_i$ is the firing rate of the i-th neuron, and $Y_i$ represents its binary spike train.
+
+Let $Y=\sum_{i=1}^{N_A} Y_i$ denote the population spike train. The population firing rate is given by 
+\begin{align}
+\lambda=\sum_i^{N_A} \lambda_i.
+\end{align}
+
+We can derive the firing rate of the population spike train as:
+\begin{align}
+\log \lambda &= \log \left ( \sum_{i=1}^{N_A} \lambda_i \right ) \\
+&= \beta_0  + \log \left ( \sum_i^{N_A} \exp(h*Y_i)  \right ).
+\end{align}
+
+Due to the convexity of exponential function, we have the following inequation
+\begin{align} 
+\sum_i^{N_A} \exp(h*Y_i) \geq N_A \cdot \exp(h*Y/N_A).
+\end{align}
+
+Thus, 
+\begin{align}
+\log \lambda &\geq \log(N_A)+\beta_0 + h*Y/N_A \\
+&= \tilde{\beta_0} + Y*\tilde{h},
+\end{align}
+where $\tilde{\beta_0}=\log(N_A)+\beta_0$ and $\tilde{h}=h/N_A$ represent the linearly scaled baseline and post-spike filter.
+
+This inequality implies that the true log firing rate of the population, $\log \lambda$, is greater than the prediction provided by the linearly scaled parameters $\tilde{\beta_0}$ and $\tilde{h}$. Therefore, if we fit a population GLM to the data to obtain estimated parameters $\hat{\beta}_0$ and $\hat{h}$, these estimates must compensate for this underestimation. Consequently, compared to the theoretically scaled parameters $\tilde{\beta}_0$ and $\tilde{h}$, at least one of the following assertions regarding the fitted estimates must hold true:
+\begin{itemize}
+    \item The estimated baseline is higher than the linearly scaled prediction ($\hat{\beta}_0 > \tilde{\beta}_0$).
+    \item The estimated population self-history filter $\hat{h}$, which is typically negative during the refractory period, is weaker (less negative) than the scaled individual filter $\tilde{h}$.
+\end{itemize}
+
+In our simulation, we consistently observed that the fitted population self-history filter, denoted by $\hat{h}$, is substantially weaker than $\tilde{h}$ when the post-spike filters of individual neurons emulate biologically authentic refractory effects (Figure \ref{subfig: explain nonlinear correction}A). Consequently, the overall refractory effects in the population-level GLMs, given by $\hat{h}*\tilde{Y}$, are much weaker than $\tilde{h}*\tilde{Y} \approx h*Y_i$, which represents the refractory effects in a single neuron. This suggests that there tends to be a lack of refractory effects if we just use a linear self-history filter to capture refractory effects in population spike trains. 
+
+Next, we highlight a scenario where an individual neuron remains stable, but the model tailored to the population spike trains exhibits instability due to this lack of refractory effects. In this model, we introduce excitatory coupling effects within the population of $N_A$ GLM neurons. Similarly, we assume that every neuron receives coupling filters from all other neurons in the group and all coupling filters are consistent, represented by $c$. Figure \ref{subfig: explain nonlinear correction} B shows the generated spike trains, where the ground truth single-neuron GLM never explode. However, if we fit population-level GLM with a linear self-history filter and inhomogeneous baseline to the population spike train, it becomes unstable, as the fitted self-history filter does not reflect strong refractory effects and the self-history filter is dominated by excitatory coupling effects (Figure \ref{subfig: explain nonlinear correction}D). The fact that linear self-history filters at population level fail to capture enough refractory effects explains why the nonlinear correction term in our pop-GLM is very significant and prevents explosion. 
+
+
+% Sup Figure 1 Mean FR use all neurons
+\begin{figure}[]
+{\includegraphics{Figures/0 explain nonlinear correction.pdf}}
+\caption{
+Explanation of why population spike trains lack refractory effects when using linear self-history filters and require additional nonlinear correction. \textbf{A}, Simulate ten independent GLM neurons with a post-spike filter $h$ and a constant baseline, then fit a GLM with a self-history filter $\hat{g}$ on population spike trains. From left to right: increasing refractory effects. $\min(h) = -0.3$, $-1$, and $-3$, respectively. The fitted population self-history filter $\hat{g}$ is much higher than $h/N_A$ for biologically realistic refractory effects, where a spike would decrease the log firing rate by 2 or 3. \textbf{B, C, D}, an example case where an individual neuron does not explode, but a population-level GLM fitted on the population spike train would explode. First, generate spike trains from a population of ten GLM neurons (\textbf{B}). There are both post-spike filters for each individual neuron, and a coupling filter from any neuron to any other neuron. Then fit a GLM on the population spike train with two components: inhomogeneous baseline (\textbf{C}) and self-history effects (\textbf{D}). The fitted population self-history filter is entirely above zero, and we don't observe any refractory effects. Such strong positive feedback from post-spikes leads the model to explode.}
+\label{subfig: explain nonlinear correction}
+\end{figure}
+
+
+\subsection*{Correction for multiple comparisons}
+
+Given that we are examining 30 directed coupling pairs of areas, it is necessary to adjust for multiple comparisons. The 30 significance tests are not independent, making the Bonferroni correction potentially conservative \cite{proschan2011asymptotics}. To get an exact permutation-based adjustment, we used the following procedure. 
+
+\begin{algorithm}
+\caption{Testing Procedure}
+\label{testing}
+\textbf{Input:} Test statistics for 30 cases under 82600 permutations $T_{i,n}$ ($i=1,2,...,30$; $n=1,2,...,82600$); observed test statistics for 30 cases $T^{obs}_i$ \\
+\textbf{Output:} Corrected $p$-values $p'_{(1)}$, $p'_{(2)}$, ... for the most significant cases\\
+1. Calculate the nominal $p$-value for each case. Identify the smallest nominal $p$-value, denoted by $p_{(1)}$
+
+2. For each permutation $n=1,2,\ldots,82600$, compute the nominal $p$-values for the set of test statistics $T_{:,n}$. Record the frequency at which the smallest $p$-value is less than $p_{(1)}$, which is denoted as the corrected $p$-value $p'_{(1)}$.
+
+3. Exclude the case associated with $p_{(1)}$, leaving 29 cases. Repeat step 2, using $p_{(2)}$ in place of $p_{(1)}$, to determine $p'_{(2)}$. 
+
+4. Continue as in step 3 for the i-th smallest $p$-value $p_{(i)}$, until the corrected $p$-value $p'_{(i)}$ exceeds 0.05.
+
+\end{algorithm}
+
+In our results, the corrected $p$-values using Bonferroni and this exact procedure were close, likely due to the near independence of the 30 tests \cite{proschan2011asymptotics}. 
+
+\begin{table}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|l|l|}
+\hline
+Model name and equation & \begin{tabular}[c]{@{}l@{}}BIC improvement \\ comparing to baseline\end{tabular} \\ \hline
+Baseline without considering speed: & 0 \\
+$\log \lambda_t = f_t$ & \\ \hline
+Linear term of instantaneous speed: & 75.09 \\
+$\log \lambda_t = f_t + \beta \cdot s_t$ & \\ \hline
+Binary term of instantaneous binary state: & 6.93 \\
+$\log \lambda_t = f_t + \beta \cdot I(s_t>v_{th})$ & \\ \hline
+Two-way coupling of instantaneous speed: & 109.12 \\
+$\log \lambda_t = f_t + \mathbf{k}_{speed} \cdot \mathbf{s}_{(t-l):(t+l)} $ & \\ \hline
+Time-dependent term of instantaneous speed: & 555.69 \\
+$\log \lambda_t = f_t + \beta_t \cdot s_t$ & \\ \hline
+Time-dependent term of instantaneous binary state: & 914.43 \\
+$\log \lambda_t = f_t + \beta_t \cdot I(s_t>v_{th})$ & \\ \hline
+\textbf{Time-dependent term of trial-wise binary state:}
+ & \textbf{1454.99} \\
+$\boldsymbol{\log \lambda_t = f_t + \beta_t \cdot I(\bar{s}>v_{th})}$ & \\ \hline
+\end{tabular}
+\caption{Model selection with regard to speed. In our model selection process concerning speed, we fit models incorporating the effects of speed in various ways and compare their Bayesian Information Criterion (BIC). The model with the trial-wise binary state provides the best BIC, which is highlighted in bold. According to this model, a trial is classified as a running trial if its average speed exceeds 1 cm/s. Conversely, trials with an average speed below this threshold are classified as stationary. In our notation, $\lambda_t$ denotes the firing rate at the t-th time bin, and $f_t$ is the time-varying baseline. The term $s_t$ represents the recorded running speed at time t, and $\beta$ is the fitted coefficient. For defining the binary state, $I$ is the indicator function, and $v_{th}$ is the speed threshold used to classify states as either stationary or running. The vector $\mathbf{k}_{speed}$ serves as the filter associated with the recent past and future running speeds. $\beta_t$ is the non-stationary coefficient related to instantaneous speed or state. In all models listed in the table, we have also considered the optimal lead-lag time between the firing rate $\lambda_t$ and running speed $s_t$, as well as the best smoothing parameter for running speed $s_t$, determined through cross-validation. $v_{th}$ is another hyperparameter, which was optimized using cross-validation. In practice, a $v_{th}$ value of 1 provided the best fit, resulting in an equal distribution of running and stationary trials. }
+\label{table: speed}
+\end{table}
+
+% \subsection*{Model Selection on Cross-Coupling and Self-History Effects}
+
+% This section provided a detailed model selection process. We first found that both cross-area coupling and self-history effects are necessary and greatly improve the fit (Table \ref{table: coupling}). However, as detailed in the main text, the model becomes unstable at this points. Thus, we tried different ways to solve the explosion issue. 
+
+% One broader category of ways is adding something additional terms to the log firing rate. The term should be related to the spike train's history but capture something different from the linear self-history effects. A natural choice would be introducing a new covariate, $\Lambda(t) = \frac{1}{\tau}\sum{k=1}^n \exp(-(t-t_k^*)/\tau)$, which captures the empircal spike density in a short history window. We tried adding the term it self $\Lambda$, the quadratic term $\Lambda^2$, and a nonparametric term $f_{\text{damp}}(\Lambda)$, to the log firing rate. Results are shown in the botton three As shown in the main text, the nonparametric term of empirical spike intensity $f_{\text{damp}}(\Lambda)$ prevents explosion robustly and dramatically improves the fit (Table \ref{table: coupling}). 
+
+% Another category of ways we tried is adding an additional term on the filters, rather than on the log firing rate. We tried considering the dependence of the empircal spike density term $\Lambda$ and the history filters. Instead of the fixed self-history filter $\mathbf{g}$, we can use $\tilde{\mathbf{g}} = \mathbf{g_0} + \Lambda \cdot \mathbf{g_1}$ to replace $\mathbf{g}$, so that the total self-history effects becomes
+
+% \begin{align}
+% h(t | H_t)&=\mathbf{Y}*\tilde{\mathbf{g}}\\
+% &=\mathbf{Y}*(\mathbf{g_0} + \Lambda \cdot \mathbf{g_1}) \\
+% &=\mathbf{Y}*\mathbf{g_0} + \Lambda \cdot \mathbf{Y}*\mathbf{g_1} \\
+% &=\sum_{k=1}^n g_0(t-t_k^*) + \Lambda \cdot \sum_{k=1}^n g_1(t-t_k^*)
+% \end{align}
+
+% In other words, effective linear coupling filter now depends on $\Lambda$. Similarly, we can consider the second-order interaction by substiting $\mathbf{g}$ with $\tilde{\mathbf{g}} = \mathbf{g_0} + \Lambda \cdot \mathbf{g_1} + \Lambda^2 \cdot \mathbf{g_2}$. 
+
+% Table \ref{table: coupling} shows the corresponding results. Although adding the first-order dependence improve the fit and stabilize the model, it's not better than adding the nonparametric term to log firing rate. Also for simplicity, we end up choosing that one. 
+
+
+
+
+\subsection*{Model Selection for Self-History Effects}
+
+This section provides a detailed exploration of the model selection process, specifically focusing on addressing the explosion issue (Figure \ref{fig: model explanation}C). These explorations are summarized in Table \ref{table: coupling}, where various model configurations are compared based on their Bayesian Information Criterion (BIC) improvements and stability.
+
+Initially, we identified that both cross-area coupling and self-history effects are necessary and significantly improve the model's fit. However, as indicated in the main text, adding self-history effects led to instability. To address this, we explored various modifications to the model.
+
+One approach was the inclusion of additional terms to the log firing rate. We introduced a new covariate, $\Lambda(t) = \frac{1}{\tau}\sum_{k=1}^n \exp(-(t-t_k^*)/\tau)$, capturing the empirical spike density over a short history window. Variations of this term were tested, including $\Lambda$ itself, its quadratic form $\Lambda^2$, and a nonparametric term $f_{\text{damp}}(\Lambda)$. Among these, the nonparametric term $f_{\text{damp}}(\Lambda)$ stood out for its robust ability to prevent explosion and significantly improve the fit, as detailed in the main text and shown in Table \ref{table: coupling}.
+
+Another pathway we explored was adding the dependence between the empirical spike density $\Lambda(t)$ and self-history filters, rather than directly adding a term to the log firing rate. Specifically, we modified the fixed self-history filter $\mathbf{g}$ to a varying version $\tilde{\mathbf{g}(\Lambda)}=\mathbf{g_0} + \Lambda \cdot \mathbf{g_1}$, which depends on $\Lambda$, allowing for more flexible adaptation to the spike train's history. In this way, the total self-history effects becomes: 
+
+\begin{align}
+h(t | H_t)&=\mathbf{Y}*\tilde{\mathbf{g}}\\
+&=\mathbf{Y}*(\mathbf{g_0} + \Lambda \cdot \mathbf{g_1}) \\
+&=\mathbf{Y}*\mathbf{g_0} + \Lambda \cdot \mathbf{Y}*\mathbf{g_1} \\
+&=\sum_{k=1}^n g_0(t-t_k^*) + \Lambda \cdot \sum_{k=1}^n g_1(t-t_k^*).
+\end{align}
+
+We also considered second-order interactions by substituting $\mathbf{g}$ with a more complex formulation of $\tilde{\mathbf{g}}(\Lambda) = \mathbf{g_0} + \Lambda \cdot \mathbf{g_1} + \Lambda^2 \cdot \mathbf{g_2}$. Although incorporating first-order dependency improved the fit and stabilized the model, it did not surpass the enhancements brought by the nonparametric term added to the log firing rate. Therefore, for its robustness, adaptability, and simplicity, we ultimately chose the nonparametric term $f_{\text{damp}}(\Lambda)$ as our final model.
+
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}
+\begin{tabular}{|llll|l|l|}
+\hline
+\multicolumn{4}{|c|}{Model components}                                                                               & \multirow{2}{*}{\begin{tabular}[c]{@{}l@{}}BIC\\ improvement\end{tabular}} & \multirow{2}{*}{Stability} \\ \cline{1-4}
+\multicolumn{1}{|l|}{Baseline} & \multicolumn{1}{l|}{Coupling} & \multicolumn{1}{l|}{Self-history}                                                                & Correction term   &                                                                            &                            \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{}         & \multicolumn{1}{l|}{}                                                                            &                   & 0                                                                          & Yes                        \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{}                                                                            &                   & 4362.17                                                                    & No                         \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}                                                                           &                   & 5941.72                                                                    & No                         \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{\begin{tabular}[c]{@{}l@{}}\ding{55} (with first-order \\ dependence)\end{tabular}}  &                   & 8183.60                                                                    & Yes                        \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{\begin{tabular}[c]{@{}l@{}}\ding{55} (with second-order \\ dependence)\end{tabular}} &                   & 7682.57                                                                    & No                         \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}                                                                           & \ding{55} (linear)        & 6383.48                                                                    & No                         \\ \hline
+\multicolumn{1}{|l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}        & \multicolumn{1}{l|}{\ding{55}}                                                                           & \ding{55} (quadratic)     & 8094.84                                                                    & Yes                        \\ \hline
+\multicolumn{1}{|l|}{\scalebox{1.1}{\ding{55}}}        & \multicolumn{1}{l|}{\scalebox{1.1}{\ding{55}}}        & \multicolumn{1}{l|}{\scalebox{1.1}{\ding{55}}}                                                                           & \scalebox{1.1}{\ding{55}} \textbf{(nonparametric)} & \textbf{8929.0  }                                                                   & \textbf{Yes}                       \\ \hline
+\end{tabular}
+\caption{Comparison of models that consider coupling/history effects. I decided to use the model with coupling, history, and $\Lambda^2$ based on AIC and stability. The outcome of the GLM is probe C (i.e. V1) pooled spike trains. In this table, ``coupling" means the coupling effects (coupling filter convolved with the spike trains of another area ) from all other five areas; history effect means the post-spike filter convolved with the spike trains of itself; 1st and 2nd order correction on history/coupling mean I allow the post-spike filter/ coupling filter to change when different $\Lambda$; $\Lambda^2 $ just means adding $\Lambda^2$ to the right-hand-side of the equation as a predictor. Besides the predictors in the table, the GLMs also include the time-warped inhomogeneous baseline and the trial-wise gain constant. I fit running and stationary models separately to account for speed's effects, then add the AIC of the two models together. Stability is estimated by doing simulations, both fragile (sometimes explode) and divergent (always explode) are labeled as ``No" in the last column of stability. Details and equations for these models are in Supplementary. }
+\label{table: coupling}
+\end{table}
+
+
+
+
+
+% Sup Figure 2 Mean FR use all neurons
+\begin{figure}[]
+{\includegraphics{Figures/1 use all mean firing rate.pdf}}
+\restoregeometry
+\newpage
+\caption{Same as Figure \ref{fig: mean firing rate}, but using all available neurons in each area. Mean firing rates of six populations in six areas, under running and stationary conditions. }
+\label{subfig: use all mean firing rate}
+\end{figure}
+
+
+% Sup Figure 3 inhomogeneous baseline with time warping
+\begin{figure}[]
+{\includegraphics{Figures/1 inhomo only.pdf}}
+\restoregeometry
+\newpage
+\caption{Firing rate templates $f_j(t)$ from models with only time-warped inhomogeneous baseline ($\log \lambda_{j,m}(t)=f_j(\phi^{-1}_{j,m}(t))$). The firing rate template is thinner than the mean firing rate in Fig\ref{fig: mean firing rate}. }
+\label{subfig: inhomo only}
+\end{figure}
+
+
+% Sup Figure 4
+\begin{figure}[]
+\centering
+\includegraphics{Figures/1 basis.pdf}
+\caption{\textbf{A}, Basis functions for the inhomogeneous baseline template \(f_j(t)\) consist of 30 B-spline bases. \textbf{B}, Basis functions for the cross-area coupling filter \(g_{i \rightarrow j}\) consist of three Pillow bases. \textbf{C}, Basis functions for the population refractory function \(f_{\text{damp}}{\Lambda}\) consist of four basis functions. They do not start from zero to avoid non-identification issues and are not evenly spaced because there are much fewer data points when \(\Lambda\) is large. \textbf{D}, Illustration of excursion statistics. The yellow area shows the region where the difference between the two curves is greater than half the maximum difference, or the region of interest. The excursion statistic is defined as the area of the shaded region.}
+\label{subfig: basis}
+\end{figure}
+
+% Sup Figure 4
+\begin{figure}[]
+\centering
+\includegraphics{Figures/1 psth.pdf}
+\caption{Simulated PSTH looks similar to experimental PSTH. \textbf{A\&B}, Experimental PSTH at stationary and running conditions. \textbf{C\&D}, PSTH of simulated spike trains generated by stationary models and running models.}
+\label{subfig: psth}
+\end{figure}
+
+% Sup Figure 5
+\begin{figure}[]
+{\includegraphics{Figures/1 use all fitted filters.pdf}}
+\caption{Same as Figure \ref{fig: fitted filters}, but using all available neurons in each area. }
+\label{subfig: use all fitted filters}
+\end{figure}
+
+% Sup Figure 6
+\begin{figure}[]
+{\includegraphics{Figures/1 use exact history.pdf}}
+\caption{Same as Figure \ref{fig: fitted filters}, but without including the nonlinear correction term $f_{\text{damp}}$ in the model. Instead, we estimate each neuron's self-history filter $h_l$ with single-neuron GLMs using data from -0.5s to 0s, with 0 indicating the onset of the stimulus. Then we calculate the exact total single-neuron history effects $\log \sum_{l=1}^{N} \exp(h_l*Y_l)$ for all neurons in the population during 0-0.5s, and use it as a fixed offset when fitting pop-GLMs. The filters here are very similar to the filters in Figure \ref{fig: fitted filters}, indicating that the nonlinear history effects at the population level are an adequate approximation to the total history-dependent effects of individual neurons. }
+\label{subfig: use exact history}
+\end{figure}
+
+
+\begin{figure}[]
+\includegraphics{Figures/1 huk filters.pdf}
+\caption{Fitted coupling filters using Huk et al.'s method to Allen Institute's dataset. The coupling filters from V1 to all other areas are the most significant ones and are inhibitory. }
+\label{subfig: huk filters}
+\end{figure}
+
+\begin{figure}[]
+\includegraphics{Figures/1 huk outputs.pdf}
+\caption{Fitted coupling effects' outputs using Huk et al.'s method. The single-neuron-level model suggests that V1's inhibition to other areas dominates the firing rates. The two firing rate peaks result from V1's low activity tens of milliseconds ago. These fitted results do not seem reasonable.}
+\label{subfig: huk outputs}
+\end{figure}
+
+\begin{figure}[]
+\includegraphics{Figures/1 lfp.pdf}
+\caption{\textbf{A}, Trial-averaged Local Field Potential (LFP) post-stimulus onset under both stationary and running conditions. The LFP is averaged across multiple channels within an area. Left: V1. Right: LM. Under stationary conditions, two peaks are observed, whereas the second peak is less prominent when running, aligning with the spiking intensity observed in Figure \ref{fig: mean firing rate}. \textbf{B}, Trial-averaged Granger causality test statistics from V1 channels to LM channels. Left: stationary conditions. Right: running conditions. The Granger causality test statistics reveal a stronger connection from V1 to LM than from LM to V1, and these statistics notably diminish during running. The order of the Granger causality test is five, determined by AIC, and we ensured the significance in the tests is not due to nonstationarity by detrending and visualization.}
+\label{subfig: lfp}
+\end{figure}
+
+\begin{figure}[]
+\includegraphics[width=1.5in]{Figures/1 second mouse (only V1 to LM).pdf}
+\caption{Fitted coupling filter from V1 to LM for the second validation session. We directly applied the analysis from the first session without altering any hyperparameters. The significant connection change from V1 to LM, observed in the first mouse, is also substantiated in the second mouse.}
+\label{subfig: second mouse}
+\end{figure}
+
+\begin{figure}[]
+\includegraphics{Figures/1 all six area f damp.pdf}
+\caption{\textbf{A}, Simulated firing rates of six areas using models with and without the nonlinear correction term $f_{\text{damp}}$. \textbf{B}, Fitted $f_{\text{damp}}$ in the six areas under stationary and running conditions.}
+\label{subfig: all six area f damp}
+\end{figure}
+
+\begin{figure}[]
+{\includegraphics{Figures/0 fitted outputs.pdf}}
+\restoregeometry
+\newpage
+\caption{Fitted GLM outputs of each component, averaged across trials (95\% CI). Only coupling effects and time-warped inhomogeneous baselines are shown. Red: running. Blue: stationary. Excursion tests were performed on the two curves in each panel, but the null distribution is not shown here. Yellow areas indicate the selected regions found by excursion tests with $p$-values below 0.05. For example, the first row shows the response variable as V1 population spike trains, with coupling effects from all six areas and an inhomogeneous baseline (interpreted as input from the thalamus and other unobserved sources).}
+\label{fig: fitted outputs}
+\end{figure}
+
+
+
+
+\end{document}
+
+
+
+
+

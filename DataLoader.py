@@ -417,7 +417,10 @@ class Allen_dataset:
             self.selected_probes = [self.selected_probes]
         assert set(self.selected_probes).issubset(['probeA', 'probeB', 'probeC', 'probeD', 'probeE', 'probeF']) 
         
-        if sys.platform == 'linux':
+        env_manifest = os.environ.get('ALLEN_MANIFEST_PATH', None)
+        if env_manifest is not None:
+            self.manifest_path = env_manifest
+        elif sys.platform == 'linux':
             hostname = socket.gethostname()
             if hostname[:8] == "ghidorah":
                 path_prefix = '/home'

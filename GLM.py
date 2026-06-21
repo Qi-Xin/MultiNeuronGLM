@@ -1,5 +1,4 @@
 #%% import
-from curses import raw
 import os
 import collections
 from collections import defaultdict
@@ -2811,10 +2810,10 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
 
     ntimes = 1
     nfold = 1
-    penalty = 1e-2
-    penalty_pop = 1e-5
+    penalty = 3e3
+    penalty_pop = 1e5
     num = 20
-    num_pop = 40
+    num_pop = 20
     num_cp = 3
     peaks_max = 15
 
@@ -2838,6 +2837,8 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
     spike_trains_target = []
     time_line = np.arange(nt)
     
+    coupling_ratio = collections.defaultdict(list)
+    
     for ineuron in range(nneuron):
         if ineuron < int(nneuron/2):
             spike_trains_source.append(spikes_rcd[:,ineuron,:])
@@ -2856,6 +2857,7 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
     for ifold in range(1):
 
         all_trials = np.array( [True]*ntrial )
+        coupling_ratio_single = []
 
         ### Single neuron level model
         for output_spike_train in spike_trains_target:
@@ -2881,6 +2883,16 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
             test_nll_nest.append( model_nest.nll )
             nll_diff += model_nest.nll - model_full.nll
             
+            # coupling ratio
+            unselected_indices = list(range(num, num+len(spike_trains_source)*num_cp))
+            _predictors = model_full.predictors[:, unselected_indices]
+            _params = model_full.results.params[unselected_indices]
+            _log_lmbd = (_predictors @ _params).reshape((model_full.nt, model_full.ntrial), order='F') 
+            # print(_log_lmbd.shape)
+            coupling_ratio_single.append(
+                1-np.var(np.exp(model_full.log_lmbd - _log_lmbd)) / np.var(np.exp(model_full.log_lmbd))
+            )
+        coupling_ratio['single'].append(np.mean(coupling_ratio_single))
 
         ### Population level model
         output_spike_train_pool = np.zeros((nt, ntrial))
@@ -2898,7 +2910,7 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
                                   num=num_f_refractory, apply_no_penalty=False)
         model_full_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
-                                                 method='mine', penalty=penalty_pop, verbose=False,)
+                                                 method='mine', penalty=2e4, verbose=False,)
         test_nll_full_pop.append( model_full_pop.nll )
 
         model_nest_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
@@ -2908,11 +2920,29 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
                                   num=num_f_refractory, apply_no_penalty=False)
         model_nest_pop.fit_time_warping_baseline(target=output_spike_train_pool, max_iter=5, 
                                                  warp_interval=[[0, 0.15],[0.15, 0.35]], 
-                                                 method='mine', penalty=penalty_pop, verbose=False,)
+                                                 method='mine', penalty=2e4, verbose=False,)
         test_nll_nest_pop.append( model_nest_pop.nll )
         
         nll_diff_pop = model_nest_pop.nll - model_full_pop.nll
         df_diff_pop = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
+        
+        # coupling ratio
+        unselected_indices = list(range(num_pop, num_pop+num_cp))
+        _predictors = model_full_pop.predictors[:, unselected_indices]
+        _params = model_full_pop.results.params[unselected_indices]
+        _log_lmbd = (_predictors @ _params).reshape((model_full_pop.nt, model_full_pop.ntrial), order='F') 
+        # print(_log_lmbd.shape)
+        print(np.var(np.exp(model_full_pop.log_lmbd - _log_lmbd)))
+        print(np.var(np.exp(model_full_pop.log_lmbd)))
+        coupling_ratio['pop'].append(
+            1-np.var(np.exp(model_full_pop.log_lmbd - _log_lmbd)) / np.var(np.exp(model_full_pop.log_lmbd))
+        )
+        # coupling_ratio['pop'].append(
+        #     1-np.var((model_full_pop.log_lmbd - _log_lmbd)) / np.var((model_full_pop.log_lmbd))
+        # )
+        # coupling_ratio['pop'].append(
+        #     1-np.var(np.exp(model_nest_pop.log_lmbd)) / np.var(np.exp(model_full_pop.log_lmbd))
+        # )
 
         ### Pop-GLM but without time warping
         model_full_pop = PP_GLM(ntrial=ntrial, nt=nt, select_trials=all_trials)
@@ -2934,45 +2964,76 @@ def get_p_four_models(std1, corr1, std2, corr2, ntrial, conn):
         
         nll_diff_pop_nowarp = model_nest_pop.nll - model_full_pop.nll
         df_diff_pop_nowarp = model_full_pop.predictors.shape[1] - model_nest_pop.predictors.shape[1]
+        
+        # coupling ratio
+        unselected_indices = list(range(num_pop, num_pop+num_cp))
+        _predictors = model_full_pop.predictors[:, unselected_indices]
+        _params = model_full_pop.results.params[unselected_indices]
+        _log_lmbd = (_predictors @ _params).reshape((model_full_pop.nt, model_full_pop.ntrial), order='F') 
+        # print(_log_lmbd.shape)
+        coupling_ratio['pop_nowarp'].append(
+            1-np.var(np.exp(model_full_pop.log_lmbd - _log_lmbd)) / np.var(np.exp(model_full_pop.log_lmbd))
+        )
+        # coupling_ratio['pop_nowarp'].append(
+        #     1-np.var(np.exp(model_nest_pop.log_lmbd)) / np.var(np.exp(model_full_pop.log_lmbd))
+        # )
 
         ### Subspace model
-        width = 50
+        width = 20
         n_permutations = 10**3
         r = 1
         split = int(nneuron/2)
         X_3d = merge(spikes_rcd[:,:split,:], width=width)
         Y_3d = merge(spikes_rcd[:,split:,:], width=width)
-        result_subspace = reduced_rank_regression_test(X_3d, Y_3d, r=r, n_permutations=n_permutations)['p_value']
+        
+        result_subspace = reduced_rank_regression_test(
+            copy.deepcopy(X_3d), copy.deepcopy(Y_3d), r=r, n_permutations=n_permutations
+        )['p_value']
+        
+        coupling_ratio['rrr'].append(reduced_rank_regression(
+            copy.deepcopy(X_3d), copy.deepcopy(Y_3d), r=r
+        ))
         
     return (
         fisher_method(test_nll_full, test_nll_nest),
         ((nll_diff_pop, df_diff_pop), chi2.sf(2*nll_diff_pop, df_diff_pop)),
         ((nll_diff_pop_nowarp, df_diff_pop_nowarp), chi2.sf(2*nll_diff_pop_nowarp, df_diff_pop_nowarp)),
-        result_subspace
+        result_subspace,
+        coupling_ratio
     )
+
+def merge_default_dict(dd1, dd2):
+    merged_dd = defaultdict(list)
+    for key, value in dd1.items():
+        merged_dd[key] += (value)
+    for key, value in dd2.items():
+        merged_dd[key] += (value)
+    return merged_dd
 
 def get_ps_four_models(ntimes=10, std1=0.0, corr1=0.0, std2=0.0, corr2=0.0, ntrial=100, conn=0.008):
     import multiprocessing
     import os
 
-    PROCESSES = 10
+    PROCESSES = 4
     # ntimes = 10
     result = []
     result_pop = []
     result_pop_nowarp = []
     result_subspace = []
+    coupling_ratio = collections.defaultdict(list)
 
     with multiprocessing.get_context('spawn').Pool(processes = PROCESSES) as pool:               
         ress = [pool.apply_async(get_p_four_models, (std1, corr1, std2, corr2, ntrial, conn)) 
                     for i_null in np.arange(ntimes)]
         pool.close()
         for res in tqdm(ress):
-            result_temp, result_pop_temp, result_pop_temp_nowarp, result_subspace_temp = res.get()
+            result_temp, result_pop_temp, result_pop_temp_nowarp, result_subspace_temp, coupling_ratio_temp = res.get()
             result.append(result_temp)
             result_pop.append(result_pop_temp)
             result_pop_nowarp.append(result_pop_temp_nowarp)
             result_subspace.append(result_subspace_temp)
-    return result, result_pop, result_pop_nowarp, result_subspace
+            coupling_ratio = merge_default_dict(coupling_ratio, coupling_ratio_temp)
+    return result, result_pop, result_pop_nowarp, result_subspace, coupling_ratio
 
 
 # Merge every width elements along the first axis for both input matrices
@@ -2981,6 +3042,42 @@ def merge(matrix, width=10):
     new_shape = (matrix.shape[0] // width, width) + matrix.shape[1:]
     return matrix.reshape(new_shape).sum(axis=1)
 
+
+def reduced_rank_regression(X, Y, r):
+    # Center the data
+    Y_mean = np.repeat(Y.mean(axis=2)[:,:,None], Y.shape[2], axis=2)
+    X -= X.mean(axis=2)[:,:,None]
+    Y -= Y.mean(axis=2)[:,:,None]
+
+    # Flatten X and Y along the first and third dimensions
+    nt, n_features, ntrial = X.shape
+    _, n_outputs, _ = Y.shape
+    
+    X_flat = X.transpose(2, 0, 1).reshape(-1, n_features)
+    Y_flat = Y.transpose(2, 0, 1).reshape(-1, n_outputs)
+    Y_mean_flat = Y_mean.transpose(2, 0, 1).reshape(-1, n_outputs)
+
+    X, Y = X_flat, Y_flat
+    n_samples, n_features = X.shape
+    n_outputs = Y.shape[1]
+
+    # Fit the Reduced Rank Regression Model
+    linreg = LinearRegression().fit(X, Y)
+    B_OLS = linreg.coef_.T
+
+    # Perform SVD and construct the reduced rank coefficient matrix
+    U, D, Vt = svd(B_OLS, full_matrices=False)
+    U_r = U[:, :r]
+    D_r = D[:r]
+    Vt_r = Vt[:r, :]
+    B_rrr = U_r @ np.diag(D_r) @ Vt_r
+
+    # Make predictions and compute RSS for the Reduced Rank Model
+    Y_pred = X @ B_rrr + Y_mean_flat
+    total_variance = np.var(Y_pred)
+    variance_wo_coupling = np.var(Y_mean_flat)
+    coupling_percentage = (total_variance - variance_wo_coupling) / total_variance
+    return coupling_percentage
 
 def reduced_rank_regression_test(X, Y, r, n_permutations=1000):
     # Center the data
