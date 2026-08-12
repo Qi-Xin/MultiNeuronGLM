@@ -1,1 +1,7 @@
 not_tracking/
+# large data files and caches (do not commit — exceed GitHub limits)
+*.npz
+__pycache__/
+*.pyc
+*.err
+*.aux

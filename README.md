@@ -19,16 +19,16 @@ conda env create -f environment.yml        # or: pip install -r requirements.txt
 # core deps: numpy, scipy, scikit-learn, statsmodels, pandas, matplotlib, torch, tqdm
 #            (allensdk is only needed for the real-data example)
 
-# 2. minimal working example on synthetic data (no dataset needed, ~1 min)
-python examples/mwe_synthetic.py
-
-# 3. minimal working example on the Allen dataset (needs allensdk + cache)
-python examples/mwe_allen.py
+# 2. open the annotated example notebooks (outputs are already saved in them)
+jupyter notebook examples/mwe_synthetic.ipynb   # synthetic data, no dataset needed (~1 min)
+jupyter notebook examples/mwe_allen.ipynb        # Allen dataset (needs allensdk + cache)
 ```
 
-`mwe_synthetic.py` simulates EIF neurons with a known coupling, fits pop-GLM, and reports the
-recovered coupling filter and a likelihood-ratio test. `mwe_allen.py` fits pop-GLM to one
-Allen Neuropixels session and estimates V1→LM coupling for running vs stationary trials.
+**`examples/mwe_synthetic.ipynb`** simulates EIF neurons with a known coupling, fits pop-GLM, and
+reports the recovered coupling filter and a likelihood-ratio test. **`examples/mwe_allen.ipynb`**
+fits pop-GLM to one Allen Neuropixels session and shows that V1→LM coupling is reduced during
+locomotion (the paper's main finding). Both notebooks ship with their outputs and figures saved,
+so you can read the results without re-running. The equivalent `.py` scripts are also provided.
 
 ---
 
@@ -39,7 +39,7 @@ Allen Neuropixels session and estimates V1→LM coupling for running vs stationa
 | `GLM.py` | Core library. `PP_GLM` class (`add_effect`, `fit`, `fit_time_warping_baseline`, `get_filter`); `EIF_simulator` (synthetic data); basis/utility functions. |
 | `DataLoader.py` | `Allen_dataset` class: loads the Allen Neuropixels data via allensdk, selects drifting-grating trials, classifies running/stationary trials. |
 | `utility_functions.py` | Plotting and helper utilities. |
-| `examples/` | **Start here.** `mwe_synthetic.py` and `mwe_allen.py` — minimal, annotated, end-to-end. |
+| `examples/` | **Start here.** `mwe_synthetic.ipynb` and `mwe_allen.ipynb` — annotated notebooks with saved outputs (plus `.py` equivalents). |
 | `revision_experiments/` | Self-contained scripts + READMEs for the analyses added in revision (see below). |
 | `environment.yml` | Conda environment specification. |
 | `Figures/` | Figure sources. |
@@ -60,10 +60,25 @@ Allen Neuropixels session and estimates V1→LM coupling for running vs stationa
 - **Allen data, V1→LM coupling (Fig 6):** `examples/mwe_allen.py`; the full six-area analysis, running/stationary fitting, excursion + permutation tests, and the second-mouse replication are in the correspondingly named notebooks.
 
 ## Revision experiments
-Each folder has a README and a one-command reproduce recipe:
-- `revision_experiments/exp2a_combined_coupling_variability/` — coupling and trial-to-trial variability coexisting; time warping preserves true coupling and controls false positives.
-- `revision_experiments/exp2b_gain_vs_coupling/` — the pop-GLM coupling estimate is invariant to trial gain (synthetic), plus a ready-to-run real-data stratification script.
-- `revision_experiments/exp2c_quantitative_S6_S7/` — quantitative comparison tool (peak amplitude, integral, latency, correlation) for the full-population (S6) and alternative-self-history (S7) checks.
+Each folder has an **annotated notebook with saved outputs**, scripts, and a README. All real-data
+analyses use the **exact main-results model** (six areas, condition-specific populations,
+time-warped baseline, trial-wise gain).
+
+- `revision_experiments/exp2a_coupling_and_variability/` (`exp2a_coupling_and_variability.ipynb`) —
+  synthetic Scenario 3: coupling **and** trial-to-trial baseline variation together. pop-GLM with time
+  warping recovers the true coupling; without warping it is inflated ~2.1×; single-neuron GLMs are
+  noisy **and** inflated.
+- `revision_experiments/exp2b_gain_stratified/` (`exp2b_gain_stratified.ipynb`) — do high-gain trials
+  show weaker V1→LM coupling? Trials split by **global population gain** (all neurons, six areas) into
+  81 high / 129 low (matching running/stationary sizes). High-gain trials show significantly weaker
+  V1→LM coupling (p=0.042; p=0.007 controlling for stimulus) — consistent with shared global drive.
+- `revision_experiments/exp2c_model_variants/` (`exp2c_model_variants.ipynb`) — model-variant
+  robustness: all recorded neurons, and a linear self-history term. Amplitude/delay correlations
+  across all 60 cross-area coupling filters.
+
+Shared: `revision_experiments/build_dataset.py` + `popglm_data.py` reproduce
+`DataLoader.Allen_dataset` from the session NWB with `h5py` (fast, no re-download), so the real
+`GLM.PP_GLM` can be driven directly.
 
 ## Data
 The Allen Brain Observatory – Neuropixels Visual Coding dataset is publicly available from the
